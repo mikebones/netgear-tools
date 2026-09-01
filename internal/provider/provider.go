@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 	"os"
 
@@ -90,9 +92,9 @@ func (p *PR60XProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		insecure = data.Insecure.ValueBool()
 	}
 
-	c, err := newClient(endpoint, username, password, insecure)
+	c, err := pr60x.NewClient(endpoint, username, password, insecure)
 	if err != nil {
-		resp.Diagnostics.AddError("Could not create PR60X client", err.Error())
+		resp.Diagnostics.AddError("Could not create PR60X pr60x.Client", err.Error())
 		return
 	}
 
@@ -115,6 +117,7 @@ func (p *PR60XProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewPortForwardingRuleResource,
 		NewStaticRouteResource,
 		NewVLANDHCPDNSResource,
+		NewRemoteSyslogResource,
 	}
 }
 

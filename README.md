@@ -139,7 +139,67 @@ terraform import pr60x_port_forwarding_rule.plex 0
 terraform import pr60x_service_profile.plex 13
 ```
 
-## Building
+## Prometheus exporter
+
+`cmd/pr60x-exporter` exposes the router's telemetry, sharing the same client as
+the provider. It gives you more than SNMP would: per-port byte/packet/error
+counters, link state and negotiated speed, chassis temperature and fan RPM,
+uptime, WAN state, pending alarms, DHCP lease counts, and how many
+port-forwards are enabled.
+
+```
+pr60x_up 1
+pr60x_info{firmware_version="2.7.0.111",product_id="PR60X",region="NA",...} 1
+pr60x_management_mode{mode="local"} 1
+pr60x_system_temperature_celsius 42
+pr60x_fan_speed_rpm 3057
+pr60x_uptime_seconds 2.789658e+06
+pr60x_internet_connected 1
+pr60x_port_link_speed_mbps{port="LAN4"} 10000
+pr60x_port_rx_bytes{port="wan1"} 8.140456886219e+12
+pr60x_dhcp_leases{vlan="VLAN1"} 27
+pr60x_port_forwarding_rules_enabled 9
+```
+
+**It polls on its own schedule and serves a cached snapshot** — it does not
+touch the router per scrape. That is the whole design: the device's config
+daemon degrades under rapid RPC load, and a scrape-driven exporter behind two
+Prometheus replicas at 15s would wedge it. Poll every 60s, scrape as often as
+you like, and watch `pr60x_last_scrape_timestamp_seconds` for staleness. The
+binary refuses an interval below 15s.
+
+Run one replica. Each replica is another poller against an appliance that
+should not be polled hard, and a restart only costs one interval of staleness.
+
+Port counters are **gauges, not counters**, on purpose: the device zeroes them
+on reboot with no way to detect that except `pr60x_uptime_seconds` going
+backwards, and Prometheus would read a reboot as a counter reset and invent a
+huge rate.
+
+```bash
+go build -o pr60x-exporter ./cmd/pr60x-exporter
+PR60X_PASSWORD=... ./pr60x-exporter --interval 60s
+curl -s localhost:9812/metrics | grep ^pr60x_
+```
+
+### Deploying it
+
+`Dockerfile` builds a static binary on distroless. For a mixed amd64/arm64
+cluster build both, or the pod only schedules on one architecture:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64   -t <registry>/pr60x-exporter:v0.1.0 --push .
+```
+
+`deploy/kubernetes/pr60x-exporter.yaml` has a Namespace, Secret, Deployment,
+Service and ServiceMonitor. Set the image and namespace, then decide how the
+password arrives — the file ships a plain Secret as the obvious placeholder and
+carries a commented `VaultStaticSecret` writing to the same name and key, which
+is the better end state given this credential owns the network edge. Prometheus
+can discover it either through the `prometheus.io/*` pod annotations or the
+ServiceMonitor; delete whichever you don't use.
+
+## Building the provider
 
 ```bash
 go build -o ~/.terraform.d/plugins/local/mikebones/pr60x/0.1.0/windows_amd64/terraform-provider-pr60x.exe .
@@ -148,6 +208,24 @@ cd examples && terraform init && PR60X_PASSWORD=... terraform plan
 
 Adjust the OS/arch segment for other platforms. `terraform init` prints the
 directory it actually searched if the path is wrong.
+
+Note the CLI config gates local providers: `~/.terraformrc` (and on Windows
+`%APPDATA%/terraform.rc`) needs a `filesystem_mirror` whose `include` covers
+`local/*/*`.
+
+## Layout
+
+```
+internal/pr60x/     the client - transport, auth, all typed RPC methods
+internal/provider/  Terraform provider, built on internal/pr60x
+cmd/pr60x-exporter/ Prometheus exporter, built on internal/pr60x
+scripts/            Python used to reverse engineer the protocol
+deploy/kubernetes/  exporter manifests
+```
+
+The client lives in its own package so the provider and exporter share one
+implementation. The auth sequence, the configd pacing and the response quirks
+are the hard-won part; having them in two places would mean fixing them twice.
 
 ## scripts/
 

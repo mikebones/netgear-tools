@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -11,7 +13,7 @@ import (
 var _ datasource.DataSource = &portForwardingRulesDataSource{}
 
 type portForwardingRulesDataSource struct {
-	client *client
+	client *pr60x.Client
 }
 
 func NewPortForwardingRulesDataSource() datasource.DataSource {
@@ -72,11 +74,11 @@ func (d *portForwardingRulesDataSource) Configure(_ context.Context, req datasou
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*client)
+	d.client = req.ProviderData.(*pr60x.Client)
 }
 
 func (d *portForwardingRulesDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	all, err := d.client.listPortForwardingRules()
+	all, err := d.client.ListPortForwardingRules()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not list port-forwarding rules", err.Error())
 		return

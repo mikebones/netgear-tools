@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 	"fmt"
 	"strconv"
@@ -20,7 +22,7 @@ var (
 )
 
 type vlanDHCPDNSResource struct {
-	client *client
+	client *pr60x.Client
 }
 
 func NewVLANDHCPDNSResource() resource.Resource {
@@ -66,7 +68,7 @@ func (r *vlanDHCPDNSResource) Configure(_ context.Context, req resource.Configur
 	if req.ProviderData == nil {
 		return
 	}
-	r.client = req.ProviderData.(*client)
+	r.client = req.ProviderData.(*pr60x.Client)
 }
 
 func (r *vlanDHCPDNSResource) apply(ctx context.Context, plan *vlanDHCPDNSModel, diags *diag.Diagnostics) {
@@ -75,14 +77,14 @@ func (r *vlanDHCPDNSResource) apply(ctx context.Context, plan *vlanDHCPDNSModel,
 	if diags.HasError() {
 		return
 	}
-	if err := r.client.setVLANDHCPDNS(plan.VLANID.ValueInt64(), servers); err != nil {
+	if err := r.client.SetVLANDHCPDNS(plan.VLANID.ValueInt64(), servers); err != nil {
 		diags.AddError("Could not set DHCP DNS servers", err.Error())
 		return
 	}
 
 	// Read back, so state records what the device stored rather than what we
 	// asked for.
-	got, err := r.client.vlanDHCPDNS(plan.VLANID.ValueInt64())
+	got, err := r.client.VLANDHCPDNS(plan.VLANID.ValueInt64())
 	if err != nil {
 		diags.AddError("Could not read back DHCP DNS servers", err.Error())
 		return
@@ -115,7 +117,7 @@ func (r *vlanDHCPDNSResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	got, err := r.client.vlanDHCPDNS(state.VLANID.ValueInt64())
+	got, err := r.client.VLANDHCPDNS(state.VLANID.ValueInt64())
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read DHCP DNS servers", err.Error())
 		return

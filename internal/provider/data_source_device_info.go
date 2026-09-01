@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -11,7 +13,7 @@ import (
 var _ datasource.DataSource = &deviceInfoDataSource{}
 
 type deviceInfoDataSource struct {
-	client *client
+	client *pr60x.Client
 }
 
 func NewDeviceInfoDataSource() datasource.DataSource {
@@ -74,16 +76,16 @@ func (d *deviceInfoDataSource) Configure(_ context.Context, req datasource.Confi
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*client)
+	d.client = req.ProviderData.(*pr60x.Client)
 }
 
 func (d *deviceInfoDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	info, err := d.client.getDeviceInfo()
+	info, err := d.client.GetDeviceInfo()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read device info", err.Error())
 		return
 	}
-	mode, err := d.client.getManagementMode()
+	mode, err := d.client.GetManagementMode()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read management mode", err.Error())
 		return

@@ -1,0 +1,157 @@
+# PR60X exporter - Deployment + Service.
+#
+# Adjust the image, the namespace and the way PR60X_PASSWORD is supplied, then
+# apply. Everything else should work as-is.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pr60x-exporter
+---
+# Supplying the password
+# ----------------------
+# This plain Secret is the simplest option and the one to replace first. If you
+# run the Vault Secrets Operator, delete this and use a VaultStaticSecret
+# writing to the same Secret name and key - nothing else below changes:
+#
+#   apiVersion: secrets.hashicorp.com/v1beta1
+#   kind: VaultStaticSecret
+#   metadata:
+#     name: pr60x-exporter
+#     namespace: pr60x-exporter
+#   spec:
+#     vaultAuthRef: pr60x-exporter
+#     mount: secret
+#     type: kv-v2
+#     path: pr60x/admin
+#     destination:
+#       name: pr60x-exporter
+#       create: true
+#     refreshAfter: 1h
+#
+# This is the router's only credential and it owns the network edge, so it is
+# worth doing properly rather than leaving a literal here.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pr60x-exporter
+  namespace: pr60x-exporter
+type: Opaque
+stringData:
+  password: "REPLACE-ME"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pr60x-exporter
+  namespace: pr60x-exporter
+  labels:
+    app.kubernetes.io/name: pr60x-exporter
+spec:
+  # ONE replica, deliberately, and do not raise it.
+  #
+  # Each replica runs its own poller. The router's backend config daemon
+  # degrades under concurrent RPC load and starts returning
+  # "Failed to call process_configd_request" for everything until it recovers -
+  # which takes the router's own web UI down with it. Two replicas doubles the
+  # rate against a device that has no business being polled hard.
+  #
+  # This exporter serves a cached snapshot, so a restart costs at most one
+  # poll interval of staleness. That is a far better trade than HA here.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pr60x-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pr60x-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9812"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          image: REGISTRY/pr60x-exporter:v0.1.0
+          args:
+            - --listen=:9812
+            - --endpoint=https://192.168.1.1
+            # Polling interval. The router is a small appliance - 60s is
+            # plenty for temperature, link state and byte counters, and the
+            # binary refuses anything under 15s.
+            - --interval=60s
+          env:
+            - name: PR60X_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pr60x-exporter
+                  key: password
+          ports:
+            - name: metrics
+              containerPort: 9812
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 60
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 96Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pr60x-exporter
+  namespace: pr60x-exporter
+  labels:
+    app.kubernetes.io/name: pr60x-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: pr60x-exporter
+  ports:
+    - name: metrics
+      port: 9812
+      targetPort: metrics
+---
+# Only if you run the Prometheus Operator. If Prometheus instead discovers
+# targets from the prometheus.io/* pod annotations above, delete this.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pr60x-exporter
+  namespace: pr60x-exporter
+  labels:
+    app.kubernetes.io/name: pr60x-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pr60x-exporter
+  endpoints:
+    - port: metrics
+      # The exporter serves a cached snapshot, so scraping more often than the
+      # poll interval just re-reads the same numbers. It costs the router
+      # nothing, but there is no point going below 30s.
+      interval: 30s

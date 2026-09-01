@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 	"fmt"
 	"strconv"
@@ -21,7 +23,7 @@ var (
 )
 
 type portForwardingRuleResource struct {
-	client *client
+	client *pr60x.Client
 }
 
 func NewPortForwardingRuleResource() resource.Resource {
@@ -89,15 +91,15 @@ func (r *portForwardingRuleResource) Configure(_ context.Context, req resource.C
 	if req.ProviderData == nil {
 		return
 	}
-	r.client = req.ProviderData.(*client)
+	r.client = req.ProviderData.(*pr60x.Client)
 }
 
-func (m portForwardingRuleModel) toAPI() portForwardingRule {
+func (m portForwardingRuleModel) toAPI() pr60x.PortForwardingRule {
 	enabled := int64(0)
 	if m.Enabled.ValueBool() {
 		enabled = 1
 	}
-	return portForwardingRule{
+	return pr60x.PortForwardingRule{
 		ID:                m.ID.ValueInt64(),
 		Enabled:           enabled,
 		ExternalService:   m.ExternalService.ValueString(),
@@ -109,7 +111,7 @@ func (m portForwardingRuleModel) toAPI() portForwardingRule {
 	}
 }
 
-func applyPortForwardingRule(dst *portForwardingRuleModel, src *portForwardingRule) {
+func applyPortForwardingRule(dst *portForwardingRuleModel, src *pr60x.PortForwardingRule) {
 	dst.ID = types.Int64Value(src.ID)
 	dst.Enabled = types.BoolValue(src.Enabled != 0)
 	dst.ExternalService = types.StringValue(src.ExternalService)
@@ -123,7 +125,7 @@ func applyPortForwardingRule(dst *portForwardingRuleModel, src *portForwardingRu
 // matches identifies a rule by its natural key. The device assigns ids on
 // create and does not return them, so this is how a freshly created rule is
 // located to recover its id.
-func matches(r portForwardingRule, want portForwardingRule) bool {
+func matches(r pr60x.PortForwardingRule, want pr60x.PortForwardingRule) bool {
 	return r.ExternalService == want.ExternalService &&
 		r.InternalService == want.InternalService &&
 		r.DestIPAddress == want.DestIPAddress &&
@@ -142,7 +144,7 @@ func (r *portForwardingRuleResource) Create(ctx context.Context, req resource.Cr
 	// Both referenced service profiles must exist first - the device stores
 	// them by name and will otherwise create a rule pointing at nothing.
 	for _, name := range []string{want.ExternalService, want.InternalService} {
-		profile, err := r.client.getServiceProfileByName(name)
+		profile, err := r.client.GetServiceProfileByName(name)
 		if err != nil {
 			resp.Diagnostics.AddError("Could not verify service profile", err.Error())
 			return
@@ -157,7 +159,7 @@ func (r *portForwardingRuleResource) Create(ctx context.Context, req resource.Cr
 		}
 	}
 
-	before, err := r.client.listPortForwardingRules()
+	before, err := r.client.ListPortForwardingRules()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not list existing port-forwarding rules", err.Error())
 		return
@@ -174,12 +176,12 @@ func (r *portForwardingRuleResource) Create(ctx context.Context, req resource.Cr
 		}
 	}
 
-	if _, err := r.client.addPortForwardingRule(want); err != nil {
+	if _, err := r.client.AddPortForwardingRule(want); err != nil {
 		resp.Diagnostics.AddError("Could not create port-forwarding rule", err.Error())
 		return
 	}
 
-	after, err := r.client.listPortForwardingRules()
+	after, err := r.client.ListPortForwardingRules()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read back created port-forwarding rule", err.Error())
 		return
@@ -205,7 +207,7 @@ func (r *portForwardingRuleResource) Read(ctx context.Context, req resource.Read
 		return
 	}
 
-	rule, err := r.client.getPortForwardingRuleByID(state.ID.ValueInt64())
+	rule, err := r.client.GetPortForwardingRuleByID(state.ID.ValueInt64())
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read port-forwarding rule", err.Error())
 		return
@@ -227,7 +229,7 @@ func (r *portForwardingRuleResource) Update(ctx context.Context, req resource.Up
 	}
 
 	plan.ID = state.ID
-	if err := r.client.editPortForwardingRule(plan.toAPI()); err != nil {
+	if err := r.client.EditPortForwardingRule(plan.toAPI()); err != nil {
 		resp.Diagnostics.AddError("Could not update port-forwarding rule", err.Error())
 		return
 	}
@@ -240,7 +242,7 @@ func (r *portForwardingRuleResource) Delete(ctx context.Context, req resource.De
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.client.deletePortForwardingRule(state.ID.ValueInt64()); err != nil {
+	if err := r.client.DeletePortForwardingRule(state.ID.ValueInt64()); err != nil {
 		resp.Diagnostics.AddError("Could not delete port-forwarding rule", err.Error())
 	}
 }

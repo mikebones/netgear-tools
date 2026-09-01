@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 	"fmt"
 	"strconv"
@@ -8,8 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -19,7 +21,7 @@ var (
 )
 
 type serviceProfileResource struct {
-	client *client
+	client *pr60x.Client
 }
 
 func NewServiceProfileResource() resource.Resource {
@@ -69,13 +71,13 @@ func (r *serviceProfileResource) Configure(_ context.Context, req resource.Confi
 	if req.ProviderData == nil {
 		return
 	}
-	r.client = req.ProviderData.(*client)
+	r.client = req.ProviderData.(*pr60x.Client)
 }
 
 // toAPI converts plan/state into the wire struct, honouring the device's
 // convention that port fields are absent for proto all/icmp.
-func (m serviceProfileModel) toAPI() serviceProfile {
-	p := serviceProfile{
+func (m serviceProfileModel) toAPI() pr60x.ServiceProfile {
+	p := pr60x.ServiceProfile{
 		ID:    m.ID.ValueInt64(),
 		Name:  m.Name.ValueString(),
 		Proto: m.Proto.ValueString(),
@@ -95,7 +97,7 @@ func (m serviceProfileModel) toAPI() serviceProfile {
 	return p
 }
 
-func applyServiceProfile(dst *serviceProfileModel, src *serviceProfile) {
+func applyServiceProfile(dst *serviceProfileModel, src *pr60x.ServiceProfile) {
 	dst.ID = types.Int64Value(src.ID)
 	dst.Name = types.StringValue(src.Name)
 	dst.Proto = types.StringValue(src.Proto)
@@ -120,7 +122,7 @@ func (r *serviceProfileResource) Create(ctx context.Context, req resource.Create
 
 	name := plan.Name.ValueString()
 
-	existing, err := r.client.getServiceProfileByName(name)
+	existing, err := r.client.GetServiceProfileByName(name)
 	if err != nil {
 		resp.Diagnostics.AddError("Could not check existing service profiles", err.Error())
 		return
@@ -135,14 +137,14 @@ func (r *serviceProfileResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	if _, err := r.client.addServiceProfile(plan.toAPI()); err != nil {
+	if _, err := r.client.AddServiceProfile(plan.toAPI()); err != nil {
 		resp.Diagnostics.AddError("Could not create service profile", err.Error())
 		return
 	}
 
 	// The add call returns only {"result":0}, so read the profile back to
 	// confirm it landed and to capture exactly what the device stored.
-	created, err := r.client.getServiceProfileByName(name)
+	created, err := r.client.GetServiceProfileByName(name)
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read back created service profile", err.Error())
 		return
@@ -168,7 +170,7 @@ func (r *serviceProfileResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	all, err := r.client.listServiceProfiles()
+	all, err := r.client.ListServiceProfiles()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read service profiles", err.Error())
 		return
@@ -195,7 +197,7 @@ func (r *serviceProfileResource) Update(ctx context.Context, req resource.Update
 	}
 
 	plan.ID = state.ID
-	if err := r.client.editServiceProfile(plan.toAPI()); err != nil {
+	if err := r.client.EditServiceProfile(plan.toAPI()); err != nil {
 		resp.Diagnostics.AddError("Could not update service profile", err.Error())
 		return
 	}
@@ -212,7 +214,7 @@ func (r *serviceProfileResource) Delete(ctx context.Context, req resource.Delete
 	// Refuse to delete a profile that a port-forwarding rule still references.
 	// The device stores that reference by name, so removing the profile would
 	// leave a dangling rule rather than failing cleanly.
-	rules, err := r.client.listPortForwardingRules()
+	rules, err := r.client.ListPortForwardingRules()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not check port-forwarding rules before delete", err.Error())
 		return
@@ -229,7 +231,7 @@ func (r *serviceProfileResource) Delete(ctx context.Context, req resource.Delete
 		}
 	}
 
-	if err := r.client.deleteServiceProfile(state.ID.ValueInt64()); err != nil {
+	if err := r.client.DeleteServiceProfile(state.ID.ValueInt64()); err != nil {
 		resp.Diagnostics.AddError("Could not delete service profile", err.Error())
 	}
 }

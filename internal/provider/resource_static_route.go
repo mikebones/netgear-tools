@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 	"fmt"
 	"strconv"
@@ -22,7 +24,7 @@ var (
 )
 
 type staticRouteResource struct {
-	client *client
+	client *pr60x.Client
 }
 
 func NewStaticRouteResource() resource.Resource {
@@ -97,15 +99,15 @@ func (r *staticRouteResource) Configure(_ context.Context, req resource.Configur
 	if req.ProviderData == nil {
 		return
 	}
-	r.client = req.ProviderData.(*client)
+	r.client = req.ProviderData.(*pr60x.Client)
 }
 
-func (m staticRouteModel) toAPI() staticRoute {
+func (m staticRouteModel) toAPI() pr60x.StaticRoute {
 	enabled := int64(0)
 	if m.Enabled.ValueBool() {
 		enabled = 1
 	}
-	return staticRoute{
+	return pr60x.StaticRoute{
 		ID:          m.ID.ValueInt64(),
 		Name:        m.Name.ValueString(),
 		Destination: m.Destination.ValueString(),
@@ -117,7 +119,7 @@ func (m staticRouteModel) toAPI() staticRoute {
 	}
 }
 
-func applyStaticRoute(dst *staticRouteModel, src *staticRoute) {
+func applyStaticRoute(dst *staticRouteModel, src *pr60x.StaticRoute) {
 	dst.ID = types.Int64Value(src.ID)
 	dst.Name = types.StringValue(src.Name)
 	dst.Destination = types.StringValue(src.Destination)
@@ -136,13 +138,13 @@ func (r *staticRouteResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	want := plan.toAPI()
-	id, err := r.client.addStaticRoute(want)
+	id, err := r.client.AddStaticRoute(want)
 	if err != nil {
 		resp.Diagnostics.AddError("Could not create static route", err.Error())
 		return
 	}
 
-	created, err := r.client.getStaticRouteByID(id)
+	created, err := r.client.GetStaticRouteByID(id)
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read back created static route", err.Error())
 		return
@@ -167,7 +169,7 @@ func (r *staticRouteResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	route, err := r.client.getStaticRouteByID(state.ID.ValueInt64())
+	route, err := r.client.GetStaticRouteByID(state.ID.ValueInt64())
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read static route", err.Error())
 		return
@@ -189,7 +191,7 @@ func (r *staticRouteResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	plan.ID = state.ID
-	if err := r.client.editStaticRoute(plan.toAPI()); err != nil {
+	if err := r.client.EditStaticRoute(plan.toAPI()); err != nil {
 		resp.Diagnostics.AddError("Could not update static route", err.Error())
 		return
 	}
@@ -202,7 +204,7 @@ func (r *staticRouteResource) Delete(ctx context.Context, req resource.DeleteReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.client.deleteStaticRoute(state.ID.ValueInt64()); err != nil {
+	if err := r.client.DeleteStaticRoute(state.ID.ValueInt64()); err != nil {
 		resp.Diagnostics.AddError("Could not delete static route", err.Error())
 	}
 }

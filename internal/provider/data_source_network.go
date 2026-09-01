@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"terraform-provider-pr60x/internal/pr60x"
+
 	"context"
 	"sort"
 
@@ -17,7 +19,7 @@ import (
 
 var _ datasource.DataSource = &vlanProfilesDataSource{}
 
-type vlanProfilesDataSource struct{ client *client }
+type vlanProfilesDataSource struct{ client *pr60x.Client }
 
 func NewVLANProfilesDataSource() datasource.DataSource { return &vlanProfilesDataSource{} }
 
@@ -79,11 +81,11 @@ func (d *vlanProfilesDataSource) Configure(_ context.Context, req datasource.Con
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*client)
+	d.client = req.ProviderData.(*pr60x.Client)
 }
 
 func (d *vlanProfilesDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	all, err := d.client.listVLANProfiles()
+	all, err := d.client.ListVLANProfiles()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read VLAN profiles", err.Error())
 		return
@@ -117,7 +119,7 @@ func (d *vlanProfilesDataSource) Read(ctx context.Context, _ datasource.ReadRequ
 
 var _ datasource.DataSource = &dhcpLeasesDataSource{}
 
-type dhcpLeasesDataSource struct{ client *client }
+type dhcpLeasesDataSource struct{ client *pr60x.Client }
 
 func NewDHCPLeasesDataSource() datasource.DataSource { return &dhcpLeasesDataSource{} }
 
@@ -164,11 +166,11 @@ func (d *dhcpLeasesDataSource) Configure(_ context.Context, req datasource.Confi
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*client)
+	d.client = req.ProviderData.(*pr60x.Client)
 }
 
 func (d *dhcpLeasesDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	byVLAN, err := d.client.listDHCPLeases()
+	byVLAN, err := d.client.ListDHCPLeases()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read DHCP leases", err.Error())
 		return
@@ -202,7 +204,7 @@ func (d *dhcpLeasesDataSource) Read(ctx context.Context, _ datasource.ReadReques
 
 var _ datasource.DataSource = &wanStatusDataSource{}
 
-type wanStatusDataSource struct{ client *client }
+type wanStatusDataSource struct{ client *pr60x.Client }
 
 func NewWANStatusDataSource() datasource.DataSource { return &wanStatusDataSource{} }
 
@@ -238,11 +240,11 @@ func (d *wanStatusDataSource) Configure(_ context.Context, req datasource.Config
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*client)
+	d.client = req.ProviderData.(*pr60x.Client)
 }
 
 func (d *wanStatusDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	st, err := d.client.getWANStatus()
+	st, err := d.client.GetWANStatus()
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read WAN status", err.Error())
 		return
