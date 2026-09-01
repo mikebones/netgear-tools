@@ -1,0 +1,19 @@
+# Raw discovery output contains live LAN inventory (DHCP lease hostnames
+# and MACs) and the WAN public address. scripts/schema.json is the redacted,
+# committed equivalent - regenerate it with scripts/schemagen.py.
+scripts/discovery.json
+scripts/serviceprofiles.snapshot.json
+
+# built provider binary
+terraform-provider-pr60x
+terraform-provider-pr60x.exe
+
+# terraform working state
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+
+# python bytecode
+__pycache__/
+*.pyc

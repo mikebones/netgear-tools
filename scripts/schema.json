@@ -1,0 +1,765 @@
+{
+  "_meta": {
+    "cookie_required_on_authed_calls": true
+  },
+  "getAdvancedDebug": {
+    "result": {
+      "SDMPort": "int",
+      "enableCrashDump": "int",
+      "enableIpsecDebug": "int",
+      "enableIpsecHwAcceleration": "int",
+      "enableSDM": "int",
+      "enableSSH": "int",
+      "enableWireguardDebug": "int",
+      "fastPathEngine": "string",
+      "serverIp": "string"
+    }
+  },
+  "getAlarms": {
+    "result": {
+      "almList": [
+        {
+          "alarmLevel": "int",
+          "alarmTime": "string",
+          "alarmTimestamp": "int",
+          "alarmseq": "int",
+          "infoString": "string",
+          "sysalarmId": "int"
+        }
+      ]
+    }
+  },
+  "getAppInstallState": {
+    "error": {
+      "code": -32601,
+      "message": ""
+    }
+  },
+  "getAppSettings": {
+    "error": {
+      "code": -32601,
+      "message": ""
+    }
+  },
+  "getAttachedDevices": {
+    "error": {
+      "code": -32603,
+      "message": ""
+    }
+  },
+  "getBasicFirewall": {
+    "result": {
+      "currentConnections": "int",
+      "dmz": {
+        "enable": "int",
+        "ipV4Address": "string"
+      },
+      "enablePingOnWan": "int",
+      "enablePortScan": "int",
+      "enableSip": "int",
+      "maxConcurrentConnections": "int",
+      "sessionTimeout": {
+        "icmpSessionTimeout": "int",
+        "tcpSessionTimeout": "int",
+        "udpSessionTimeout": "int"
+      }
+    }
+  },
+  "getCertDetails": {
+    "error": {
+      "code": -32602,
+      "message": ""
+    }
+  },
+  "getCerts": {
+    "error": {
+      "code": -32602,
+      "message": ""
+    }
+  },
+  "getClientToSiteProfiles": {
+    "result": []
+  },
+  "getClientToSiteProfilesStatus": {
+    "result": {
+      "profiles": []
+    }
+  },
+  "getCurrentTime": {
+    "result": {
+      "Date": "string"
+    }
+  },
+  "getDDNSProfileStatus": {
+    "result": []
+  },
+  "getDDNSProfiles": {
+    "result": []
+  },
+  "getDDNSServiceProviders": {
+    "result": [
+      {
+        "serviceName": "string"
+      }
+    ]
+  },
+  "getDeviceInfo": {
+    "result": {
+      "bootloaderVersion": "string",
+      "ethernetMAC": "string",
+      "fanSpeedRPM": "int",
+      "firmwareVersion": "string",
+      "insightMode": "string",
+      "insightStatus": "string",
+      "productId": "string",
+      "region": "string",
+      "releaseType": "string",
+      "serialNumber": "string",
+      "systemTemperatureCelsius": "int",
+      "systemTemperatureFahrenheit": "int",
+      "uptime": "string"
+    }
+  },
+  "getDeviceName": {
+    "result": {
+      "deviceName": "string"
+    }
+  },
+  "getDhcpLeases": {
+    "result": {
+      "VLAN1": [
+        {
+          "hostName": "string",
+          "ipAddr": "string",
+          "leaseExpireTime": "int",
+          "macAddr": "string",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "getDualWanProfiles": {
+    "result": {
+      "enabled": "int",
+      "faliureDetectionMethod": "string",
+      "mode": "string",
+      "primaryInterface": "string",
+      "retryOptions": {
+        "numOfRetries": "int",
+        "retryInterval": "int"
+      },
+      "trackIp": [
+        {
+          "interface": "string",
+          "ipv4": [
+            "string"
+          ]
+        }
+      ],
+      "trackIpType": "string"
+    }
+  },
+  "getDualWanRules": {
+    "result": []
+  },
+  "getDualWanStatus": {
+    "result": {
+      "activeInterface": "string",
+      "interfaceStatus": [
+        {
+          "interface": "string",
+          "status": "string",
+          "uptimeSec": "int"
+        }
+      ]
+    }
+  },
+  "getExternalPublicIpAddress": {
+    "result": [
+      "string"
+    ]
+  },
+  "getFirmwareDownloadProgress": {
+    "result": {
+      "downloadPercent": "int",
+      "state": "string"
+    }
+  },
+  "getFirmwareUpgrade": {
+    "result": {
+      "firmwareVersion": "string",
+      "isUpgradeAvailable": "int",
+      "lastCheckTimeString": "string",
+      "lastCheckTimestamp": "int",
+      "releaseNotesUrl": "string"
+    }
+  },
+  "getGuiIdleTimeout": {
+    "result": {
+      "softIdleTimeoutMinutes": "int"
+    }
+  },
+  "getGuiTheme": {
+    "result": {
+      "mode": "string"
+    }
+  },
+  "getInterfaceList": {
+    "result": {
+      "interfaces": [
+        {
+          "friendlyName": "string",
+          "ifname": "string"
+        }
+      ]
+    }
+  },
+  "getInternetStatus": {
+    "result": {
+      "status": "string"
+    }
+  },
+  "getIpConflict": {
+    "result": {
+      "ipConflict": "int",
+      "ipConflictStatusWan1": "int",
+      "ipConflictStatusWan2": "int"
+    }
+  },
+  "getIpsecProfiles": {
+    "result": [
+      {
+        "id": "int",
+        "ikeVersion": "string",
+        "inUse": "int",
+        "phaseOneOption": {
+          "cipherSuites": [
+            {
+              "authentication": "string",
+              "dhGroup": "string",
+              "encryption": "string"
+            }
+          ],
+          "saLifetime": "int"
+        },
+        "phaseTwoOption": {
+          "cipherSuites": [
+            {
+              "authentication": "string",
+              "dhGroup": "string",
+              "encryption": "string"
+            }
+          ],
+          "protocol": "string",
+          "saLifetime": "int"
+        },
+        "profileName": "string"
+      }
+    ]
+  },
+  "getLagSettings": {
+    "result": {
+      "enabled": "int",
+      "lags": [
+        {
+          "lacpSettings": {
+            "priority": "int",
+            "rate": "string"
+          },
+          "mode": "string",
+          "ports": [],
+          "xmitHashPolicy": "string"
+        }
+      ]
+    }
+  },
+  "getLedControl": {
+    "result": {
+      "ledControl": "int"
+    }
+  },
+  "getLldpNeighbors": {
+    "result": [
+      {
+        "capability": [
+          {
+            "enabled": "bool",
+            "type": "string"
+          }
+        ],
+        "chassisId": "string",
+        "chassisIdType": "string",
+        "managementAddress": "string",
+        "port": "string",
+        "portId": "string",
+        "portIdType": "string",
+        "systemDescription": "string",
+        "systemName": "string",
+        "ttl": "int"
+      }
+    ]
+  },
+  "getLldpSettings": {
+    "result": {
+      "enabled": "int",
+      "portSettings": [
+        {
+          "enabled": "int",
+          "port": "string"
+        }
+      ]
+    }
+  },
+  "getMacAclTable": {
+    "result": {
+      "result": [
+        {
+          "accessControlPolicy": "string",
+          "groupIdx": "int",
+          "macList": [],
+          "name": "string"
+        }
+      ]
+    }
+  },
+  "getManagementMode": {
+    "result": {
+      "mode": "string"
+    }
+  },
+  "getMdnsDiscoveredServices": {
+    "result": []
+  },
+  "getMdnsSettings": {
+    "result": {
+      "enableReflector": "int"
+    }
+  },
+  "getNetworkInterfaces": {
+    "result": {
+      "lan": [
+        {
+          "interface": "string",
+          "vlanId": "int",
+          "vlanName": "string"
+        }
+      ],
+      "wan": [
+        {
+          "interface": "string",
+          "vlanId": "int"
+        }
+      ]
+    }
+  },
+  "getNtpSettings": {
+    "result": {
+      "customServerEnable": "int",
+      "serverIpAddr": [
+        "string"
+      ]
+    }
+  },
+  "getOpenVpnServerProfiles": {
+    "result": []
+  },
+  "getOpenVpnServerProfilesStatus": {
+    "result": []
+  },
+  "getOutboundNatRules": {
+    "result": []
+  },
+  "getPasswordRecovery": {
+    "result": {
+      "result": {
+        "enabled": "int",
+        "securityAnswer1": "string",
+        "securityAnswer2": "string",
+        "securityQuestion1": "int",
+        "securityQuestion2": "int"
+      }
+    }
+  },
+  "getPasswordRecoveryMode": {
+    "result": {
+      "passwdRecovery": "int"
+    }
+  },
+  "getPendingAlarmCount": {
+    "result": {
+      "pendingAlarm": "int"
+    }
+  },
+  "getPingTestResult": {
+    "result": {
+      "result": "string",
+      "status": "int"
+    }
+  },
+  "getPortForwardingRules": {
+    "result": [
+      {
+        "destIpAddress": "string",
+        "enabled": "int",
+        "externalService": "string",
+        "id": "int",
+        "internalService": "string",
+        "srcIpAddress": "string",
+        "wanInputInterface": "string",
+        "wanIpAddress": "string"
+      }
+    ]
+  },
+  "getPortSettings": {
+    "result": {
+      "result": [
+        {
+          "enableEEE": "int",
+          "enableFlowControl": "int",
+          "linkSpeed": "string",
+          "port": "string",
+          "rxCompensation": "string",
+          "supportEEE": "int",
+          "supportFlowControl": "int",
+          "supportLinkSpeed": [
+            "string"
+          ],
+          "supportLinkSpeedFlags": "int",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "getPortTriggeringRules": {
+    "result": []
+  },
+  "getProductProfile": {
+    "result": {
+      "GUITheme": "string",
+      "dayZeroStatus": "int",
+      "firmwareVersion": "string",
+      "hostname": "string",
+      "languageCode": "string",
+      "productId": "string",
+      "releaseType": "string"
+    }
+  },
+  "getRemoteSyslog": {
+    "result": {
+      "enabled": "int",
+      "serverIpAddress": "string",
+      "serverPort": "int"
+    }
+  },
+  "getScheduleProfiles": {
+    "result": [
+      {
+        "endTime": "string",
+        "id": "int",
+        "name": "string",
+        "scheduledDays": [
+          "string"
+        ],
+        "startTime": "string"
+      }
+    ]
+  },
+  "getScheduledReboot": {
+    "result": [
+      {
+        "enabled": "int",
+        "schDays": [
+          "string"
+        ],
+        "schTime": "string"
+      }
+    ]
+  },
+  "getSecureDNSSettings": {
+    "result": {
+      "enabled": "int",
+      "fallback": "int",
+      "servers": []
+    }
+  },
+  "getSecurityQuestions": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getServiceProfiles": {
+    "result": [
+      {
+        "id": "int",
+        "name": "string",
+        "proto": "string"
+      }
+    ]
+  },
+  "getSiteToSiteProfileStatus": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getSitetoSiteProfiles": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getSnmpSettings": {
+    "result": {
+      "enabled": "int",
+      "sysContact": "string",
+      "sysLocation": "string",
+      "sysName": "string",
+      "v1v2cEnabled": "int",
+      "v1v2cSettings": {
+        "clientIpAddress": "string",
+        "communityPrivate": "string",
+        "communityPublic": "string"
+      },
+      "v3Enabled": "int",
+      "v3Settings": []
+    }
+  },
+  "getSnmpTrapSettings": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getSqmProfiles": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getStaticLeaseProfiles": {
+    "error": {
+      "code": 2407,
+      "message": "Invalid VLAN ID for static leases - 2147483647"
+    }
+  },
+  "getStaticRoutes": {
+    "result": []
+  },
+  "getSystemLanguage": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getSystemSupportedLanguages": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getTimeSettings": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getTimeZone": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getTracerouteResult": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getTrafficRules": {
+    "result": []
+  },
+  "getTrafficStatistics": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getUpnpPortMapTable": {
+    "result": []
+  },
+  "getUpnpSettings": {
+    "result": {
+      "enabled": "int",
+      "notifyIntervalSec": "int",
+      "notifyTTL": "int"
+    }
+  },
+  "getVlanAdvancedSettings": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getVlanPorts": {
+    "result": {
+      "result": [
+        {
+          "vlanId": "int",
+          "vlanPorts": [
+            {
+              "port": "int",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "getVlanProfiles": {
+    "result": {
+      "result": [
+        {
+          "deviceManagement": "int",
+          "enabled": "int",
+          "interVlanRouting": "int",
+          "ipv4Settings": {
+            "dhcpDnsAddr": [
+              "string"
+            ],
+            "dhcpDnsType": "string",
+            "dhcpDomainName": "string",
+            "dhcpEndIpv4Address": "string",
+            "dhcpLeaseTime": "int",
+            "dhcpNtpServerAddr": [],
+            "dhcpNtpServerEnabled": "int",
+            "dhcpServerEnabled": "int",
+            "dhcpStartIpv4Address": "string",
+            "ipAddress": "string",
+            "netmask": "string",
+            "sequentialIp": "int"
+          },
+          "macAddress": "string",
+          "name": "string",
+          "rip": {
+            "direction": "string",
+            "version": "string"
+          },
+          "vlanId": "int",
+          "vlanPorts": [
+            {
+              "port": "int",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "getVpnPassthroughStatus": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getVpnUsers": {
+    "result": []
+  },
+  "getWanProfiles": {
+    "result": {
+      "result": [
+        {
+          "dhcpOptions": {
+            "clientId": "string",
+            "domainName": "string",
+            "hostName": "string",
+            "vendorId": "string"
+          },
+          "enabled": "int",
+          "ipv4Settings": {
+            "additionalIpAddrs": {
+              "enabled": "int",
+              "ipAddrs": []
+            },
+            "dns": {
+              "dnsAddr": [
+                "string"
+              ],
+              "type": "string"
+            },
+            "gateway": "string",
+            "ipAddr": "string",
+            "netmask": "string",
+            "type": "string"
+          },
+          "macAddrSettings": {
+            "macAddrCustom": "string",
+            "macAddrDefault": "string",
+            "macAddrPc": "string",
+            "type": "string"
+          },
+          "mtuSettings": {
+            "size": "int",
+            "type": "string"
+          },
+          "vlanTagging": {
+            "enabled": "int",
+            "vlanId": "int"
+          },
+          "wanIdx": "int"
+        }
+      ]
+    }
+  },
+  "getWanType": {
+    "result": {
+      "wanType": "string"
+    }
+  },
+  "getWireGuardPeerProfiles": {
+    "result": []
+  },
+  "getWireGuardPeerStatus": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getWireGuardServerProfile": {
+    "result": {
+      "clientIsolation": "int",
+      "dnsServerType": "string",
+      "enabled": "int",
+      "ipAddress": "string",
+      "mtu": "int",
+      "netmask": "string",
+      "port": "int",
+      "primaryDnsServer": "string",
+      "privateKey": "string",
+      "publicKey": "string",
+      "secondaryDnsServer": "string",
+      "serverAddress": "string"
+    }
+  },
+  "getWiredMacAclProfile": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  },
+  "getWiredPortLinkDetails": {
+    "result": [
+      {
+        "linkSpeed": "int",
+        "linkStatus": "int",
+        "name": "string"
+      }
+    ]
+  },
+  "getWireguardClientStatus": {
+    "error": {
+      "code": 500,
+      "message": "Failed to call process_configd_request. ret = -1\r\n"
+    }
+  }
+}
