@@ -292,12 +292,18 @@ value-free equivalent that is safe to commit.
 
 ## Known gaps
 
-- **The MS510TXUP applies configuration without starting the service.** Both
-  SNTP and the syslog relay accept their settings, report them back correctly
-  and show the collector as Active - and then do nothing. `reqs` stays 0 with
-  no SNTP log lines, and the syslog relay's own `msgReceived` stays 0 while
-  `log_ram` is happily recording. It most likely needs a reboot to start those
-  services, which on this switch cuts PoE to whatever it powers.
+- **The MS510TXUP applies configuration without starting the service, and a
+  reboot does not fix it.** Both SNTP and the syslog relay accept their
+  settings, report them back correctly and show the collector as Active - and
+  then do nothing. `reqs` stays 0 with no SNTP log lines, and the relay's own
+  `msgReceived` stays 0 while `log_ram` records normally.
+
+  A full reboot was tried on 2026-09-01 and **did not help**: the settings
+  survived it (so they are in the startup config, not just running state) and
+  both counters were still 0 afterwards. `reqs = 0` is the useful detail - that
+  counts requests *sent*, so this is not a reachability problem, the client
+  simply never transmits. Firmware here is V1.0.5.15; a firmware update is the
+  next thing to try, not another reboot.
 - **Its clock is three years stale** as a result: no battery-backed RTC and
   SNTP shipped off, so it stamps messages Jan 2023. The timezone setting *does*
   apply immediately, which makes this easy to mistake for a working clock.
