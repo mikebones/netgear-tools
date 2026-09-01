@@ -624,6 +624,86 @@ func (c *client) listVLANProfiles() ([]vlanProfile, error) {
 	return out, nil
 }
 
+// --- VLAN DHCP settings (read-modify-write) --------------------------------
+//
+// editVlanProfiles REPLACES the whole profile, and a profile carries fields
+// this provider does not model - rip, vlanPorts, macAddress, sequentialIp,
+// dhcpNtpServerAddr and so on. Rebuilding it from a typed struct would
+// silently drop them, so edits go through untyped maps and send every field
+// back exactly as read, with only the intended key changed.
+
+func (c *client) getVLANProfilesRaw() ([]map[string]any, error) {
+	var out []map[string]any
+	if err := c.callResult("getVlanProfiles", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *client) getVLANProfileRaw(vlanID int64) (map[string]any, error) {
+	all, err := c.getVLANProfilesRaw()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range all {
+		if v, ok := p["vlanId"].(float64); ok && int64(v) == vlanID {
+			return p, nil
+		}
+	}
+	return nil, nil
+}
+
+// vlanDHCPDNS reads the DHCP option 6 list for one VLAN.
+func (c *client) vlanDHCPDNS(vlanID int64) ([]string, error) {
+	p, err := c.getVLANProfileRaw(vlanID)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return nil, fmt.Errorf("no VLAN with id %d", vlanID)
+	}
+	ipv4, _ := p["ipv4Settings"].(map[string]any)
+	raw, _ := ipv4["dhcpDnsAddr"].([]any)
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// setVLANDHCPDNS rewrites DHCP option 6 for one VLAN, leaving every other
+// field of the profile untouched. Changing option 6 cannot partition the
+// network: it only affects what future leases advertise, and existing clients
+// keep their current resolvers until they renew.
+func (c *client) setVLANDHCPDNS(vlanID int64, servers []string) error {
+	p, err := c.getVLANProfileRaw(vlanID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("no VLAN with id %d", vlanID)
+	}
+	ipv4, ok := p["ipv4Settings"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("VLAN %d has no ipv4Settings object", vlanID)
+	}
+
+	list := make([]any, 0, len(servers))
+	for _, s := range servers {
+		list = append(list, s)
+	}
+	ipv4["dhcpDnsAddr"] = list
+	if len(servers) > 0 {
+		// The device distinguishes an explicit list from "inherit from WAN".
+		ipv4["dhcpDnsType"] = "custom"
+	}
+	p["action"] = "edit"
+
+	return c.call("editVlanProfiles", []map[string]any{p}, nil)
+}
+
 // --- DHCP leases (read-only) -----------------------------------------------
 
 type dhcpLease struct {

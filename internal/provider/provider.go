@@ -114,6 +114,7 @@ func (p *PR60XProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewServiceProfileResource,
 		NewPortForwardingRuleResource,
 		NewStaticRouteResource,
+		NewVLANDHCPDNSResource,
 	}
 }
 

@@ -20,6 +20,7 @@ response shapes are in `scripts/schema.json`.
 | `pr60x_wan_status` data source | **Verified live** |
 | `pr60x_service_profile` resource | **Full CRUD verified live** through `terraform apply`/`destroy` |
 | `pr60x_port_forwarding_rule` resource | add/delete verified live; edit follows the same confirmed contract |
+| `pr60x_vlan_dhcp_dns` resource | **Verified live** — applied, imported, clean plan |
 | `pr60x_static_route` resource | **Unverified** — field names inferred, see below |
 
 Write shapes were confirmed by round trip against firmware 2.7.0.111 on
@@ -158,12 +159,40 @@ Python, stdlib only, no dependencies.
 | `collect.py` | Re-collects specific methods with gentle pacing when configd has been upset. |
 | `roundtrip.py` | Confirms the service-profile add/delete payload shape. Mutating — snapshots first, cleans up, verifies. |
 | `roundtrip2.py` | Confirms the edit shape and the port-forwarding add/delete shapes. Mutating; its probe rule is created `enabled=0` so nothing is ever exposed. |
+| `set_dhcp_dns.py` | Sets DHCP option 6 for a VLAN, with `--show` and `--restore`. Snapshots, sends the profile back byte-for-byte with one field changed, and deep-diffs the result. |
 | `schemagen.py` | Reduces `discovery.json` to the value-free `schema.json`. |
 | `schema.json` | Committed schema reference: every method's response shape, no values. |
 
 `discovery.json` is gitignored deliberately — it contains live DHCP lease
 hostnames and MAC addresses plus the WAN public address. `schema.json` is the
 committed equivalent.
+
+### Fixing split DNS resolution
+
+If private names resolve only some of the time, check what your DHCP server
+advertises as option 6. Handing clients both a local resolver and a public one
+gives them two nameservers with no rule for choosing, so anything only the
+local resolver knows about fails roughly half the time — deterministically, but
+looking for all the world like flaky networking.
+
+```hcl
+resource "pr60x_vlan_dhcp_dns" "lan" {
+  vlan_id = 1
+  servers = ["192.168.1.64"] # local resolver only
+}
+```
+
+This resource adopts an existing VLAN and manages exactly one field. It will
+not create or destroy VLANs, and it does not touch addressing, the DHCP range
+or port membership. Changing option 6 cannot partition the network: it only
+affects what future leases advertise, and existing clients keep their current
+resolvers until they renew.
+
+Import the current value first, so the first plan tells you what is really set:
+
+```bash
+terraform import pr60x_vlan_dhcp_dns.lan 1
+```
 
 ## Auditing your own device
 

@@ -17,3 +17,6 @@ terraform.tfstate.backup
 # python bytecode
 __pycache__/
 *.pyc
+scripts/vlan.snapshot.json
+scripts/roundtrip2.snapshot.json
+scripts/serviceprofiles.snapshot.json
