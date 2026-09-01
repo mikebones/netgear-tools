@@ -71,7 +71,16 @@ func (r *serviceProfileResource) Configure(_ context.Context, req resource.Confi
 	if req.ProviderData == nil {
 		return
 	}
-	r.client = req.ProviderData.(*pr60x.Client)
+	c := clientsFrom(req.ProviderData)
+	if c == nil {
+		return
+	}
+	if c.PR60X == nil {
+		resp.Diagnostics.AddError("PR60X not configured",
+			"This resource manages the router. Add a `pr60x` block to the provider, or set PR60X_PASSWORD.")
+		return
+	}
+	r.client = c.PR60X
 }
 
 // toAPI converts plan/state into the wire struct, honouring the device's

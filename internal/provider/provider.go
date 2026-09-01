@@ -1,8 +1,6 @@
 package provider
 
 import (
-	"netgear-tools/internal/pr60x"
-
 	"context"
 	"os"
 
@@ -11,90 +9,141 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	"netgear-tools/internal/pr60x"
+	"netgear-tools/internal/xs508tm"
 )
 
-var _ provider.Provider = &PR60XProvider{}
+var _ provider.Provider = &NetgearProvider{}
 
-type PR60XProvider struct {
+type NetgearProvider struct {
 	version string
 }
 
-type pr60xProviderModel struct {
+// clients is what every resource and data source receives. Each device family
+// gets its own client and any of them may be nil - a configuration that only
+// manages the switch should not have to invent router credentials. Resources
+// check for nil and name the missing block rather than panicking.
+type clients struct {
+	PR60X   *pr60x.Client
+	XS508TM *xs508tm.Client
+}
+
+type deviceModel struct {
 	Endpoint types.String `tfsdk:"endpoint"`
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`
 	Insecure types.Bool   `tfsdk:"insecure"`
 }
 
+type netgearProviderModel struct {
+	PR60X   *deviceModel `tfsdk:"pr60x"`
+	XS508TM *deviceModel `tfsdk:"xs508tm"`
+}
+
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &PR60XProvider{version: version}
+		return &NetgearProvider{version: version}
 	}
 }
 
-func (p *PR60XProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *NetgearProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "netgear"
 	resp.Version = p.version
 }
 
-func (p *PR60XProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages a NETGEAR PR60X router through its local JSON-RPC management API. " +
-			"Requires the router to be in local management mode - check with the pr60x_device_info data source.",
+func deviceAttrs(what, defaultEndpoint, envPrefix string) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional:    true,
+		Description: "Connection details for " + what + ". Omit entirely if you do not manage this device.",
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				Optional: true,
-				Description: "Base URL of the router, e.g. https://192.168.1.1. " +
-					"Defaults to the PR60X_ENDPOINT environment variable, then https://192.168.1.1.",
+				Optional:    true,
+				Description: "Base URL. Falls back to " + envPrefix + "_ENDPOINT, then " + defaultEndpoint + ".",
 			},
 			"username": schema.StringAttribute{
-				Optional: true,
-				Description: "Admin username. The device's web UI only ever sends \"admin\", which is the default here. " +
-					"Falls back to the PR60X_USERNAME environment variable.",
+				Optional:    true,
+				Description: "Admin username. Falls back to " + envPrefix + "_USERNAME, then admin.",
 			},
 			"password": schema.StringAttribute{
 				Optional:  true,
 				Sensitive: true,
-				Description: "Admin password. Falls back to the PR60X_PASSWORD environment variable, which is the " +
-					"recommended way to supply it - this is the only credential the device has and it owns the network edge.",
+				Description: "Admin password. Falls back to " + envPrefix + "_PASSWORD, which is the recommended " +
+					"way to supply it - these devices have no API-token concept, so this is the credential that " +
+					"owns the hardware.",
 			},
 			"insecure": schema.BoolAttribute{
 				Optional: true,
-				Description: "Skip TLS certificate verification. Defaults to true: the router serves a self-signed " +
-					"certificate for its LAN address and there is no practical way to pin a real one on a private IP.",
+				Description: "Skip TLS verification. Defaults to true: these devices serve self-signed " +
+					"certificates on private addresses.",
 			},
 		},
 	}
 }
 
-func (p *PR60XProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	var data pr60xProviderModel
+func (p *NetgearProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Manages NETGEAR network hardware through each device's local management API - no NETGEAR " +
+			"account, Insight subscription or cloud dependency. Each device family is configured in its own " +
+			"attribute and has its own resource prefix (netgear_pr60x_*, netgear_xs508tm_*).",
+		Attributes: map[string]schema.Attribute{
+			"pr60x":   deviceAttrs("the PR60X router", "https://192.168.1.1", "PR60X"),
+			"xs508tm": deviceAttrs("an XS-series smart switch", "http://192.168.1.223", "XS508TM"),
+		},
+	}
+}
+
+func resolve(d *deviceModel, envPrefix, defaultEndpoint string) (endpoint, username, password string, insecure bool) {
+	insecure = true
+	if d != nil {
+		endpoint, username, password = d.Endpoint.ValueString(), d.Username.ValueString(), d.Password.ValueString()
+		if !d.Insecure.IsNull() {
+			insecure = d.Insecure.ValueBool()
+		}
+	}
+	endpoint = firstNonEmpty(endpoint, os.Getenv(envPrefix+"_ENDPOINT"), defaultEndpoint)
+	username = firstNonEmpty(username, os.Getenv(envPrefix+"_USERNAME"), "admin")
+	password = firstNonEmpty(password, os.Getenv(envPrefix+"_PASSWORD"))
+	return
+}
+
+func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	var data netgearProviderModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	endpoint := firstNonEmpty(data.Endpoint.ValueString(), os.Getenv("PR60X_ENDPOINT"), "https://192.168.1.1")
-	username := firstNonEmpty(data.Username.ValueString(), os.Getenv("PR60X_USERNAME"), "admin")
-	password := firstNonEmpty(data.Password.ValueString(), os.Getenv("PR60X_PASSWORD"))
+	c := &clients{}
 
-	if password == "" {
+	// A device counts as configured when a password can be found for it,
+	// whether from the block or the environment. Absence means "not managed
+	// here" rather than an error.
+	if endpoint, username, password, insecure := resolve(data.PR60X, "PR60X", "https://192.168.1.1"); password != "" {
+		client, err := pr60x.NewClient(endpoint, username, password, insecure)
+		if err != nil {
+			resp.Diagnostics.AddError("Could not create PR60X client", err.Error())
+			return
+		}
+		c.PR60X = client
+	}
+
+	if endpoint, username, password, insecure := resolve(data.XS508TM, "XS508TM", "http://192.168.1.223"); password != "" {
+		client, err := xs508tm.NewClient(endpoint, username, password, insecure)
+		if err != nil {
+			resp.Diagnostics.AddError("Could not create XS508TM client", err.Error())
+			return
+		}
+		c.XS508TM = client
+	}
+
+	if c.PR60X == nil && c.XS508TM == nil {
 		resp.Diagnostics.AddError(
-			"Missing PR60X admin password",
-			"Set the provider's password attribute or the PR60X_PASSWORD environment variable. "+
-				"PR60X_PASSWORD is preferred so the credential never lands in state or version control.",
+			"No NETGEAR device configured",
+			"Supply a password for at least one device, either in its provider attribute or via "+
+				"PR60X_PASSWORD / XS508TM_PASSWORD. Sourcing these from Vault is preferred so the "+
+				"credential never lands in state or version control.",
 		)
-		return
-	}
-
-	insecure := true
-	if !data.Insecure.IsNull() {
-		insecure = data.Insecure.ValueBool()
-	}
-
-	c, err := pr60x.NewClient(endpoint, username, password, insecure)
-	if err != nil {
-		resp.Diagnostics.AddError("Could not create PR60X pr60x.Client", err.Error())
 		return
 	}
 
@@ -111,19 +160,33 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-func (p *PR60XProvider) Resources(_ context.Context) []func() resource.Resource {
+// clientsFrom unwraps the provider data, tolerating the nil ProviderData that
+// the framework passes during early validation walks.
+func clientsFrom(providerData any) *clients {
+	if providerData == nil {
+		return nil
+	}
+	c, _ := providerData.(*clients)
+	return c
+}
+
+func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		// PR60X router
 		NewServiceProfileResource,
 		NewPortForwardingRuleResource,
 		NewStaticRouteResource,
 		NewVLANDHCPDNSResource,
+		NewRemoteSyslogResource,
 		NewSQMResource,
 		NewUPnPResource,
-		NewRemoteSyslogResource,
+		// XS-series switch
+		NewSwitchIGMPSnoopingResource,
+		NewSwitchSyslogServerResource,
 	}
 }
 
-func (p *PR60XProvider) DataSources(_ context.Context) []func() datasource.DataSource {
+func (p *NetgearProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewDeviceInfoDataSource,
 		NewServiceProfilesDataSource,

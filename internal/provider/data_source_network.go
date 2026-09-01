@@ -81,7 +81,16 @@ func (d *vlanProfilesDataSource) Configure(_ context.Context, req datasource.Con
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*pr60x.Client)
+	c := clientsFrom(req.ProviderData)
+	if c == nil {
+		return
+	}
+	if c.PR60X == nil {
+		resp.Diagnostics.AddError("PR60X not configured",
+			"This data source reads the router. Add a `pr60x` block to the provider, or set PR60X_PASSWORD.")
+		return
+	}
+	d.client = c.PR60X
 }
 
 func (d *vlanProfilesDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -166,7 +175,16 @@ func (d *dhcpLeasesDataSource) Configure(_ context.Context, req datasource.Confi
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*pr60x.Client)
+	c := clientsFrom(req.ProviderData)
+	if c == nil {
+		return
+	}
+	if c.PR60X == nil {
+		resp.Diagnostics.AddError("PR60X not configured",
+			"This data source reads the router. Add a `pr60x` block to the provider, or set PR60X_PASSWORD.")
+		return
+	}
+	d.client = c.PR60X
 }
 
 func (d *dhcpLeasesDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -240,7 +258,16 @@ func (d *wanStatusDataSource) Configure(_ context.Context, req datasource.Config
 	if req.ProviderData == nil {
 		return
 	}
-	d.client = req.ProviderData.(*pr60x.Client)
+	c := clientsFrom(req.ProviderData)
+	if c == nil {
+		return
+	}
+	if c.PR60X == nil {
+		resp.Diagnostics.AddError("PR60X not configured",
+			"This data source reads the router. Add a `pr60x` block to the provider, or set PR60X_PASSWORD.")
+		return
+	}
+	d.client = c.PR60X
 }
 
 func (d *wanStatusDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {

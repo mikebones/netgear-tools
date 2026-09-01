@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,7 +46,18 @@ type Client struct {
 }
 
 // minInterval is the floor between two requests.
-const minInterval = 150 * time.Millisecond
+//
+// Raised from 150ms after the switch's management web server started
+// returning HTTP 502 under Terraform's normal request pattern. The data plane
+// was never affected - switching kept working throughout - but the management
+// plane is a small embedded web server and it does fall over.
+const minInterval = 400 * time.Millisecond
+
+// transientRetries is how many times a 502/503/504 is retried before giving
+// up. These are not "the request was wrong", they are "the management server
+// is briefly overwhelmed", and the right response is to wait rather than to
+// surface a stack of HTML at the user.
+const transientRetries = 4
 
 func NewClient(endpoint, username, password string, insecure bool) (*Client, error) {
 	jar, err := cookiejar.New(nil)
@@ -79,7 +91,49 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s returned %d: %s", e.Path, e.Status, e.Body)
 }
 
+// isTransient reports whether an error is the management server being briefly
+// unavailable rather than a bad request.
+//
+// Both shapes were observed on a live switch while driving it from Terraform:
+// first HTTP 502 with an HTML error page, then outright connection resets once
+// it was more thoroughly wedged. Neither is a client mistake and neither
+// should surface to the user as a wall of XHTML.
+func isTransient(err error) bool {
+	if ae, ok := err.(*APIError); ok {
+		return ae.Status == http.StatusBadGateway ||
+			ae.Status == http.StatusServiceUnavailable ||
+			ae.Status == http.StatusGatewayTimeout
+	}
+	// Connection reset / EOF / timeout while the embedded web server restarts.
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, s := range []string{"EOF", "connection reset", "connection refused", "timeout", "broken pipe"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// do issues one request, retrying with backoff while the management server is
+// returning a transient failure.
 func (c *Client) do(method, path string, body, out any) error {
+	var err error
+	backoff := 750 * time.Millisecond
+	for attempt := 0; attempt <= transientRetries; attempt++ {
+		err = c.doOnce(method, path, body, out)
+		if err == nil || !isTransient(err) {
+			return err
+		}
+		time.Sleep(backoff)
+		backoff *= 2
+	}
+	return err
+}
+
+func (c *Client) doOnce(method, path string, body, out any) error {
 	if since := time.Since(c.lastCall); since < minInterval {
 		time.Sleep(minInterval - since)
 	}
