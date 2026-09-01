@@ -82,6 +82,15 @@ Two firmware quirks the code absorbs so dashboards do not have to:
 
 ### MS510TXUP switch — signed CGI behind an RSA CSRF token
 
+**`sntpMode` is 0 for Unicast and 1 for Broadcast**, which is the opposite of
+the obvious guess and fails silently. In broadcast mode the client waits for
+NTP broadcasts and never transmits, so `reqs` stays 0 forever while the CLI
+cheerfully reports `SNTP is Enabled` with a server configured. Setting it to 0
+synced the clock within two poll cycles. The switch has no RTC, so it boots at
+Dec 2022 every time and SNTP is the only thing standing between you and
+three-year-old log timestamps.
+
+
 Legacy jQuery/Backbone UI and by some distance the most defended of the four.
 Four mechanisms, all reproduced in `scripts/ms510txup_login.py`:
 
@@ -292,21 +301,26 @@ value-free equivalent that is safe to commit.
 
 ## Known gaps
 
-- **The MS510TXUP applies configuration without starting the service, and a
-  reboot does not fix it.** Both SNTP and the syslog relay accept their
-  settings, report them back correctly and show the collector as Active - and
-  then do nothing. `reqs` stays 0 with no SNTP log lines, and the relay's own
-  `msgReceived` stays 0 while `log_ram` records normally.
+- **The MS510TXUP emits malformed RFC5424 and nothing can parse it.** This is
+  the one genuinely unsolved problem, and it is a firmware defect. On the wire:
 
-  A full reboot was tried on 2026-09-01 and **did not help**: the settings
-  survived it (so they are in the startup config, not just running state) and
-  both counters were still 0 afterwards. `reqs = 0` is the useful detail - that
-  counts requests *sent*, so this is not a reachability problem, the client
-  simply never transmits. Firmware here is V1.0.5.15; a firmware update is the
-  next thing to try, not another reboot.
-- **Its clock is three years stale** as a result: no battery-backed RTC and
-  SNTP shipped off, so it stamps messages Jan 2023. The timezone setting *does*
-  apply immediately, which makes this easy to mistake for a working clock.
+  ```
+  <15>1 2026-09-01T14:50:46.181-07:00: %192.168.1.2-1 SYSTEM-7-START_CONF_WRITE ...
+                                     ^ stray colon        ^ stray %
+  ```
+
+  RFC5424 wants `TIMESTAMP SP HOSTNAME`; this is `TIMESTAMP: %HOSTNAME`, so a
+  strict parser fails at column 36. Alloy reports `parsing error [col 36]` and
+  drops every message. The device has no format option - `logging` is not a
+  command in its CLI at all - so the fix has to be collector-side.
+  `loki.source.syslog` has `syslog_format = "raw"`, which disables parsing and
+  hands the line to `loki.process`, but it is experimental and needs Alloy's
+  `stability.level` set to `experimental` process-wide.
+
+  Note the counter lies: `log_remote.msgReceived` stays 0 while the switch is
+  in fact transmitting. Trust `loki_source_syslog_parsing_errors_total` on the
+  collector, or capture the datagrams, over anything this firmware reports
+  about itself.
 - **MS510TXUP DNS (`sys_dnsConf`) is not modelled yet** - still 8.8.8.8.
 - **WAX630E reads beyond the transcribed templates.** Auth and the syslog and
   device-info shapes are verified live; the station and radio templates in the

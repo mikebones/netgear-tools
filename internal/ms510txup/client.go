@@ -493,14 +493,29 @@ func (c *Client) GetTime() (TimeConfig, error) {
 	return t, err
 }
 
-// SetSNTP switches the clock to SNTP and sets the timezone.
+// SNTP client modes, from the radio group in sys_mgmt_time.html:
+//
+//	RadioGroup('sntpMode', data.sntpMode, [0, Unicast], [1, Broadcast])
+//
+// The ordering is worth stating because the obvious guess is wrong and the
+// failure is silent. In BROADCAST mode the client waits passively for NTP
+// broadcasts and never transmits, so `reqs` stays 0 forever and the switch
+// looks like it has a broken SNTP client - "SNTP is Enabled" in the CLI, a
+// server configured, no requests, no error. It is doing exactly what it was
+// told.
+const (
+	SNTPUnicast   = 0
+	SNTPBroadcast = 1
+)
+
+// SetSNTP switches the clock to SNTP unicast and sets the timezone.
 //
 // The whole form has to be sent. A partial write is accepted, reported as
 // save_success, and discarded - sending only type and sntpMode changes
 // nothing at all.
 func (c *Client) SetSNTP(tzName string, tzHours, tzMinutes int) error {
 	return c.Set("time_time", []Field{
-		{"type", "1"}, {"sntpMode", "1"}, {"sntpPort", "123"}, {"ver", "4"},
+		{"type", "1"}, {"sntpMode", fmt.Sprint(SNTPUnicast)}, {"sntpPort", "123"}, {"ver", "4"},
 		{"uniPollInterval", "6"}, {"broadcastPollInterval", "6"},
 		{"uniPollTimeout", "5"}, {"uniPollRetry", "1"},
 		{"tzName", tzName}, {"tzHours", fmt.Sprint(tzHours)}, {"tzMin", fmt.Sprint(tzMinutes)},
