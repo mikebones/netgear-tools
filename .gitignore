@@ -20,3 +20,8 @@ __pycache__/
 scripts/vlan.snapshot.json
 scripts/roundtrip2.snapshot.json
 scripts/serviceprofiles.snapshot.json
+
+# Device running-configs contain admin password hashes and topology detail.
+# Capture them to the private ansible repo, never here.
+scripts/*running-config*.txt
+scripts/*discovery*.json
