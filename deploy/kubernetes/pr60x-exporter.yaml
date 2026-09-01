@@ -79,7 +79,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: exporter
-          image: REGISTRY/pr60x-exporter:v0.1.0
+          image: ghcr.io/mikebones/pr60x-exporter:main
           args:
             - --listen=:9812
             - --endpoint=https://192.168.1.1
