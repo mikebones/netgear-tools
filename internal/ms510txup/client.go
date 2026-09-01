@@ -508,6 +508,12 @@ const (
 	SNTPBroadcast = 1
 )
 
+// Clock sources for time_time's `type` field.
+const (
+	ClockLocal = 0
+	ClockSNTP  = 1
+)
+
 // SetSNTP switches the clock to SNTP unicast and sets the timezone.
 //
 // The whole form has to be sent. A partial write is accepted, reported as
@@ -515,7 +521,21 @@ const (
 // nothing at all.
 func (c *Client) SetSNTP(tzName string, tzHours, tzMinutes int) error {
 	return c.Set("time_time", []Field{
-		{"type", "1"}, {"sntpMode", fmt.Sprint(SNTPUnicast)}, {"sntpPort", "123"}, {"ver", "4"},
+		{"type", fmt.Sprint(ClockSNTP)}, {"sntpMode", fmt.Sprint(SNTPUnicast)},
+		{"sntpPort", "123"}, {"ver", "4"},
+		{"uniPollInterval", "6"}, {"broadcastPollInterval", "6"},
+		{"uniPollTimeout", "5"}, {"uniPollRetry", "1"},
+		{"tzName", tzName}, {"tzHours", fmt.Sprint(tzHours)}, {"tzMin", fmt.Sprint(tzMinutes)},
+		{"date", ""}, {"time", ""},
+	})
+}
+
+// SetLocalClock returns the clock source to manually-set local time. The
+// switch has no RTC, so this means the clock resets to Dec 2022 on next boot.
+func (c *Client) SetLocalClock(tzName string, tzHours, tzMinutes int) error {
+	return c.Set("time_time", []Field{
+		{"type", fmt.Sprint(ClockLocal)}, {"sntpMode", fmt.Sprint(SNTPUnicast)},
+		{"sntpPort", "123"}, {"ver", "4"},
 		{"uniPollInterval", "6"}, {"broadcastPollInterval", "6"},
 		{"uniPollTimeout", "5"}, {"uniPollRetry", "1"},
 		{"tzName", tzName}, {"tzHours", fmt.Sprint(tzHours)}, {"tzMin", fmt.Sprint(tzMinutes)},
@@ -549,6 +569,31 @@ func (c *Client) AddSNTPServer(s SNTPServer) error {
 		{"type", fmt.Sprint(s.Type)}, {"ip", s.IP},
 		{"port", fmt.Sprint(s.Port)}, {"pri", fmt.Sprint(s.Pri)}, {"ver", fmt.Sprint(s.Ver)},
 	})
+}
+
+// SNTPLastSyncOK reports whether the switch's most recent SNTP attempt
+// succeeded.
+//
+// Worth surfacing rather than inferring from the clock: a switch configured in
+// broadcast mode never transmits at all, so it reports "Other" forever with
+// zero attempts and no error. "Configured but never synced" is this device's
+// characteristic failure and it is invisible unless you look here.
+func (c *Client) SNTPLastSyncOK() (bool, error) {
+	var cfg struct {
+		Statuses []struct {
+			Reqs        int    `json:"reqs"`
+			LastAttmSts string `json:"lastAttmSts"`
+		} `json:"statuss"`
+	}
+	if err := c.Get("time_sntp", &cfg); err != nil {
+		return false, err
+	}
+	for _, s := range cfg.Statuses {
+		if s.Reqs > 0 && s.LastAttmSts == "Success" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // DeleteSNTPServer removes a time source. The row key is its priority.

@@ -329,6 +329,13 @@ value-free equivalent that is safe to commit.
   502 in ~10ms because the CGI backend behind it died. Only a management-plane
   restart clears it; retrying cannot. The data plane is unaffected throughout,
   so it is not an outage and does not justify an unplanned reboot.
+- **The MS510TXUP will not jump 1.0.5.15 -> 1.1.1.9.** The image uploads and
+  verifies, `show bootvar` shows the selection moving to it, and the switch
+  then boots the old image anyway and clears the selection - silently, twice.
+  The loader is 1.0.0.7 from 2021, so an intermediate release is the likely
+  requirement. Dual-image means this costs a reboot rather than a switch.
+  `scripts/ms510txup_firmware.py` does the upload; note it returns HTTP 404 on
+  success, so check `file_dualStatus`, not the status code.
 - `netgear_pr60x_static_route` field names are unverified.
 - PR60X `getAttachedDevices` returns `-32603`; `getCerts` / `getCertDetails`
   return `-32602`. All three take parameters not yet worked out.

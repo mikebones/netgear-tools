@@ -1,0 +1,156 @@
+"""Upload a firmware image to an MS510TXUP over its HTTP upload CGI.
+
+The switch is DUAL-IMAGE, which is what makes this safe to automate: write the
+new firmware to the inactive slot, leave the running one untouched, and only
+then point the next boot at it. If the new image is bad, the switch still has a
+known-good one to fall back to.
+
+The upload is a plain multipart POST, but to a different endpoint from the rest
+of the API and with its own field order:
+
+    POST /cgi-bin/httpupload.cgi
+    X-CSRF-XSID: base64(RSA_PKCS1v15(tabid))     <- same gate as everything else
+    multipart/form-data:
+        fileType = 0        firmware
+        xsrf     = <token>  from home_home
+        imgName  = 0|1      image1 | image2
+        fileName = <the .bix file>
+
+Note the path carries no query string, so it is NOT bj4-signed - sign() leaves
+it alone. The RSA CSRF header still applies.
+
+Usage:
+
+    MS510_PASSWORD=... python ms510txup_firmware.py <file.bix> --image 2
+    MS510_PASSWORD=... python ms510txup_firmware.py <file.bix> --image 2 --activate
+
+--activate sets the next boot to the slot just written. It does NOT reboot;
+rebooting is a separate, deliberate act because it interrupts forwarding for
+everything attached to the switch.
+
+TWO THINGS OBSERVED ON A LIVE SWITCH, 2026-09-01:
+
+The upload returns HTTP 404 and succeeds anyway. Check file_dualStatus rather
+than the status code - after a "404" the image was present and correct, and
+file_http_downloadStatus went uploading -> success a minute later.
+
+1.0.5.15 WILL NOT BOOT 1.1.1.9 DIRECTLY. The image uploads cleanly, the switch
+parses its header (show bootvar lists the version and date), and the boot
+selection genuinely moves - "Not active*" in show bootvar, confirmed via the
+CLI rather than just the web UI. It then boots the old image anyway and clears
+the selection, with nothing in the log. Tried twice. The loader here is 1.0.0.7
+and dates from 2021; the likely answer is a required intermediate release
+(1.0.5.23 or 1.1.0.x) rather than a bad upload. Dual-image is what makes this
+a non-event: the running image is never touched, so a refused upgrade costs a
+reboot, not a switch.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.request
+import uuid
+
+from ms510txup_login import MS510
+
+FILETYPE_FIRMWARE = "0"
+
+
+def upload(sw, path, image_slot):
+    """POST the image into the given slot (1 or 2). Returns the reply dict."""
+    with open(path, "rb") as fh:
+        blob = fh.read()
+    if blob[:4] != b"NGP ":
+        raise SystemExit("%s does not start with the NETGEAR 'NGP ' magic - wrong file?" % path)
+
+    sw.refresh_xsrf()
+    boundary = "----ms510" + uuid.uuid4().hex
+    sep = ("--" + boundary).encode()
+
+    parts = []
+    for name, value in (("fileType", FILETYPE_FIRMWARE),
+                        ("xsrf", sw.xsrf),
+                        ("imgName", str(image_slot - 1))):   # image1 = 0, image2 = 1
+        parts.append(sep)
+        parts.append(('Content-Disposition: form-data; name="%s"' % name).encode())
+        parts.append(b"")
+        parts.append(value.encode())
+    parts.append(sep)
+    parts.append(('Content-Disposition: form-data; name="fileName"; filename="%s"'
+                  % os.path.basename(path)).encode())
+    parts.append(b"Content-Type: application/octet-stream")
+    parts.append(b"")
+    body = b"\r\n".join(parts) + b"\r\n" + blob + b"\r\n" + sep + b"--\r\n"
+
+    req = urllib.request.Request(
+        sw.host + "/cgi-bin/httpupload.cgi", data=body, method="POST",
+        headers={"Content-Type": "multipart/form-data; boundary=" + boundary,
+                 "Content-Length": str(len(body)), **sw._headers()})
+    # A 13MB write to an embedded switch is slow; do not give up early.
+    with sw.opener.open(req, timeout=600) as r:
+        return r.status, r.read().decode("utf-8", "replace")[:300]
+
+
+def wait_for_completion(sw, attempts=90):
+    """Poll the switch's own upload status until it stops saying 'uploading'."""
+    for _ in range(attempts):
+        try:
+            st = sw.get("file_http_downloadStatus").get("data", {})
+        except Exception as e:
+            print("   status read failed (%s), retrying" % str(e)[:60])
+            time.sleep(5)
+            continue
+        status = st.get("status", "")
+        print("   status: %s" % json.dumps(st)[:160])
+        if status and status != "uploading":
+            return st
+        time.sleep(5)
+    return {}
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("image_file")
+    ap.add_argument("--image", type=int, choices=(1, 2), required=True,
+                    help="destination slot; write to the one that is NOT active")
+    ap.add_argument("--activate", action="store_true",
+                    help="set next boot to the slot just written (does not reboot)")
+    args = ap.parse_args()
+
+    sw = MS510()
+    sw.login(os.environ["MS510_PASSWORD"])
+    try:
+        before = sw.get("file_dualStatus").get("data", {}).get("status", [{}])[0]
+        print("  before: img1=%s img2=%s active=%s next=%s" % (
+            before.get("img1Ver"), before.get("img2Ver"),
+            before.get("curAct"), before.get("nextAct")))
+
+        if before.get("curAct") == "image%d" % args.image:
+            raise SystemExit("refusing to overwrite the RUNNING image (image%d)" % args.image)
+
+        print("  uploading %s (%d bytes) into image%d ..." % (
+            args.image_file, os.path.getsize(args.image_file), args.image))
+        code, reply = upload(sw, args.image_file, args.image)
+        print("  upload HTTP %s: %s" % (code, reply.replace("\n", " ")[:160]))
+
+        wait_for_completion(sw)
+
+        after = sw.get("file_dualStatus").get("data", {}).get("status", [{}])[0]
+        print("  after : img1=%s img2=%s active=%s next=%s" % (
+            after.get("img1Ver"), after.get("img2Ver"),
+            after.get("curAct"), after.get("nextAct")))
+
+        if args.activate:
+            # The dual-image page posts the chosen slot back to file_dualStatus.
+            print("  setting next boot to image%d ..." % args.image)
+            print("   ->", json.dumps(sw.set("file_dualStatus",
+                                             {"nextAct": "image%d" % args.image}))[:160])
+            final = sw.get("file_dualStatus").get("data", {}).get("status", [{}])[0]
+            print("  next boot is now: %s" % final.get("nextAct"))
+    finally:
+        sw.logout()
+
+
+if __name__ == "__main__":
+    main()
