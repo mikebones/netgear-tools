@@ -1,0 +1,44 @@
+{
+  "_meta": {
+    "model": "WAX630E",
+    "address": "192.168.1.136",
+    "verified": [
+      "POST /socketCommunication is the single API endpoint, same architecture as the PR60X router",
+      "sets an lhttpdsid session cookie - shared with the PR60X and both switches",
+      "auth header is lowercase 'security', value = base64decode(cookie 'ssid')",
+      "endpoint answers structured JSON; a wrong payload returns {\"status\":100}"
+    ],
+    "unresolved": [
+      "login payload shape - three candidate shapes all returned status 100"
+    ]
+  },
+  "api_entries": [
+    "getSSID",
+    "getDayZeroStatus",
+    "validateOldPwd",
+    "reboot",
+    "getScheduleReboot",
+    "postScheduleReboot",
+    "changeUserPassword",
+    "firmwareSFTP",
+    "firmwareLocal1",
+    "firmwareLocal2",
+    "firmwareLocal3",
+    "restore",
+    "logout",
+    "isloggedin",
+    "postSyslog",
+    "setBackuppassword",
+    "setDatavolumeLimit",
+    "postGeneralBasic",
+    "postBasicTime",
+    "getBasicResponse",
+    "getMonitoring",
+    "getDashboardSystemInfo",
+    "getCurrentTrend",
+    "getStatistics",
+    "getDeviceConnectivity",
+    "getRadioInfo",
+    "getGeneral"
+  ]
+}

@@ -1,66 +1,47 @@
-# terraform-provider-pr60x
+# netgear-tools
 
-Terraform provider for the **NETGEAR PR60X** router, driving its local JSON-RPC
-management API directly. No NETGEAR account, no Insight subscription, no cloud
+Reverse-engineered clients, a Terraform provider and Prometheus exporters for
+NETGEAR network hardware, driven entirely through each device's **local**
+management API. No NETGEAR account, no Insight subscription, no cloud
 dependency.
 
-Built against firmware **2.7.0.111**. The full 238-method catalogue and
-response shapes are in `scripts/schema.json`.
+Four devices, four completely different protocols behind four different web
+UIs. The one thing they all share is a `lhttpdsid` lighttpd session cookie.
 
-## Status
+```
+internal/pr60x/       router client   - JSON-RPC 2.0 over one endpoint
+internal/xs508tm/     switch client   - REST at /api/v1/
+internal/provider/    Terraform provider, built on the clients
+cmd/pr60x-exporter/   Prometheus exporter for the router
+cmd/xs508tm-exporter/ Prometheus exporter for the switch
+scripts/              the Python used to reverse engineer each protocol
+deploy/kubernetes/    exporter manifests
+```
 
-| Layer | State |
-| --- | --- |
-| Transport, auth, session handling | **Verified live** |
-| `netgear_pr60x_device_info` data source | **Verified live** |
-| `netgear_netgear_pr60x_service_profiles` data source | **Verified live** |
-| `netgear_netgear_pr60x_port_forwarding_rules` data source | **Verified live** |
-| `netgear_pr60x_vlan_profiles` data source | **Verified live** |
-| `netgear_pr60x_dhcp_leases` data source | **Verified live** |
-| `netgear_pr60x_wan_status` data source | **Verified live** |
-| `netgear_pr60x_service_profile` resource | **Full CRUD verified live** through `terraform apply`/`destroy` |
-| `netgear_pr60x_port_forwarding_rule` resource | add/delete verified live; edit follows the same confirmed contract |
-| `netgear_pr60x_vlan_dhcp_dns` resource | **Verified live** — applied, imported, clean plan |
-| `netgear_pr60x_upnp` resource | **Verified live** — write shape confirmed by no-op round trip |
-| `netgear_pr60x_sqm` resource | Write shape confirmed; a real shaping rate has not been applied |
-| `netgear_pr60x_static_route` resource | **Unverified** — field names inferred, see below |
+## Device coverage
 
-Write shapes were confirmed by round trip against firmware 2.7.0.111 on
-2026-08-31 (`scripts/roundtrip.py`, `scripts/roundtrip2.py`), and the full
-create/update/delete lifecycle was then exercised through Terraform itself. The
-port-forwarding probe was created with `enabled = 0` throughout, so no port was
-ever actually opened during testing, and both tables were diffed against
-snapshots afterwards.
+| Device | Protocol | API mapped | Auth | Client | Exporter | Terraform |
+| --- | --- | --- | --- | --- | --- | --- |
+| **PR60X** router | JSON-RPC 2.0 | 238 methods | verified | yes | deployed | 7 resources |
+| **XS508TM** switch | REST `/api/v1/` | 288 routes, 199 read | verified | yes | built | 2 resources |
+| **MS510TXUP** switch | signed CGI | 550 endpoints | verified | partial | — | — |
+| **WAX630E** AP | `/socketCommunication` | 27 API entries | not yet | — | — | — |
 
-`netgear_pr60x_static_route` is the exception: the device has zero static routes, so
-there was no response to read field names from. They come from the web UI's
-form. Create one throwaway route and confirm it reads back before relying on it.
+## The four protocols
 
-## The protocol, briefly
+### PR60X router — JSON-RPC 2.0
 
-Three details that are easy to get wrong, all of them load-bearing:
+One endpoint, `POST /socketCommunication`. Three details are load-bearing:
 
-1. **`GET /` first.** It sets the `lhttpdsid` session cookie. Skip it and
-   `login` fails with `-32602 invalid params`, which looks exactly like a wrong
-   password but is a missing session.
-2. **Auth is a `Security:` header, not the cookie and not `Authorization`.**
-   `login` returns `result.token`; that token goes in `Security` on every later
-   call. But the cookie is *also* still required — the token alone returns 401.
-3. **Everything is one endpoint.** `POST /socketCommunication`, JSON-RPC 2.0.
-   Every other path returns the SPA's `index.html` with HTTP 200, so probing for
-   REST routes finds nothing but false positives.
+1. **`GET /` first.** It sets the `lhttpdsid` cookie. Skip it and `login` fails
+   with `-32602 invalid params`, which looks exactly like a wrong password.
+2. **Auth is a `Security:` header** — not the cookie, not `Authorization`. But
+   the cookie is *also* still required; the token alone returns 401.
+3. Every other path returns the SPA's `index.html` with HTTP 200, so probing
+   for REST routes finds only false positives.
 
-The client serializes all calls behind a mutex with a 250 ms floor between them.
-That is not paranoia: the device's backend config daemon degrades under load and
-starts returning `HTTP 500 Failed to call process_configd_request. ret = -1` for
-everything until it recovers. Terraform walks independent resources in parallel
-by default, so without the lock a modest apply reproduces that reliably.
-
-Two more quirks the client absorbs so callers do not have to:
-
-**Writes are arrays of rows carrying their own id and an action.** A bare object
-is rejected, and the *caller* allocates the id on create — the device stores
-whatever id it is sent rather than assigning one:
+Writes are arrays of rows carrying their own id and an `action`, and the
+**caller allocates the id** — the device stores whatever it is sent:
 
 ```
 add:    [ {...fields, "id": <next free>, "action": "add"} ]
@@ -68,166 +49,170 @@ edit:   [ {...fields, "id": <existing>,  "action": "edit"} ]
 delete: [ <id>, ... ]
 ```
 
-**Six methods double-wrap their payload** in a second `result` key —
-`getVlanProfiles`, `getWanProfiles`, `getPortSettings`, `getVlanPorts`,
-`getMacAclTable`, `getPasswordRecovery`. The other 57 do not. There is no
-pattern; the set is enumerated from a full sweep and lives in `doubleWrapped`
-in `client.go`. Re-run `scripts/discover.py` after a firmware upgrade to
-re-check it.
+Six methods double-wrap their payload in a second `result` key; the other 57
+do not. There is no pattern — the set is enumerated in `doubleWrapped` in
+`client.go` from a full sweep.
 
-## Usage
+### XS508TM switch — REST
+
+A genuine REST surface, and easier to work with than the router:
+
+```
+POST /api/v1/login   {"login":{"username","password"}}
+  -> {"resp":{"status","respCode","respMsg"}, "login":{"token","expire":86400}}
+GET  /api/v1/<route>   Authorization: Bearer <token>
+  -> {"resp":{...}, "<route_name>": <payload>}
+```
+
+Consistent `resp` envelope on every reply, so errors have a real channel. POST
+bodies for list resources are **arrays** — a bare object returns `errCode 175`,
+which is also what a duplicate returns.
+
+Two firmware quirks the code absorbs so dashboards do not have to:
+
+- **Counters are signed 32-bit and go negative** past 2^31. The live switch
+  returns `octRx: -13233116` on its uplinks; the exporter unwraps them.
+- **`linkup`/`linkstatus` cannot be trusted.** On this firmware they report 0
+  for the two ports carrying all the traffic and 1 for six idle ones, verified
+  against both traffic counters and LLDP. The exporter publishes the raw field
+  as `port_reported_link_up` with a help string saying so, rather than silently
+  "fixing" it.
+
+### MS510TXUP switch — signed CGI
+
+Legacy jQuery UI and the most defended of the four. Three mechanisms, all
+reproduced in `scripts/ms510txup_login.py`:
+
+- **Every URL is signed**: `&bj4=md5(<everything after the ?>)`. Unsigned
+  requests are rejected.
+- **The password is obfuscated**, never sent in clear. `encode()` builds a
+  `320 - len(pw)` character string of random alphanumerics with the password's
+  characters placed **in reverse at every 7th position**, and its length as a
+  tens digit at index 123 and a ones digit at index 289.
+- **Login is a handshake**: `POST cgi/set.cgi?cmd=home_loginAuth` returns an
+  `authId`, then `home_loginStatus` is polled until it returns `ok` with a
+  session token. It genuinely answers `Not Auth` on the first poll.
+
+Login is **verified working** and authenticated *page* loads succeed.
+Authenticated *CGI data* calls still return 404 — that gate has not been found,
+and it is not the session cookie, a Referer, or XHR headers.
+`scripts/ms510txup_endpoints.json` holds all 550 endpoints, including
+`log_remoteAdd` (syslog) and `sys_dnsConf` (DNS).
+
+Its SSH CLI works fully and is a viable alternative path, though config mode is
+limited and has **no `logging` command at all** — which is exactly why syslog
+needs the CGI API.
+
+### WAX630E access point
+
+Shares the router's architecture: `POST /socketCommunication`, `lhttpdsid`
+cookie. Auth differs — a lowercase **`security`** header whose value is
+`base64decode(cookie "ssid")`. 27 API entries recovered including `postSyslog`,
+`getMonitoring`, `getStatistics` and `getRadioInfo`. The login payload shape is
+still unknown; the endpoint answers `{"status":100}` to a wrong body, so at
+least it fails informatively.
+
+## Terraform provider
+
+Each device family is configured separately and every one is optional — a
+configuration that only manages the switch need not invent router credentials.
 
 ```hcl
 terraform {
-  required_providers {
-    netgear = { source = "local/mikebones/netgear" }
-  }
+  required_providers { netgear = { source = "local/mikebones/netgear" } }
 }
 
-provider "netgear" {}   # endpoint, username and password all have env fallbacks
-
-data "netgear_netgear_pr60x_port_forwarding_rules" "all" {}
-
-output "internet_exposed" {
-  value = [for r in data.netgear_netgear_pr60x_port_forwarding_rules.all.rules : r if r.enabled]
+provider "netgear" {
+  pr60x   = { endpoint = "https://192.168.1.1" }
+  xs508tm = { endpoint = "http://192.168.1.223" }
 }
 ```
 
-| Setting | Attribute | Environment | Default |
-| --- | --- | --- | --- |
-| Endpoint | `endpoint` | `PR60X_ENDPOINT` | `https://192.168.1.1` |
-| Username | `username` | `PR60X_USERNAME` | `admin` |
-| Password | `password` | `PR60X_PASSWORD` | — (required) |
-| Skip TLS verify | `insecure` | — | `true` (self-signed cert on a private IP) |
+Passwords come from `PR60X_PASSWORD` / `XS508TM_PASSWORD`. These devices have
+no API-token concept, so that is the credential owning the hardware — source it
+from a secret store, not a `.tf` file.
 
-Prefer `PR60X_PASSWORD`. This is the only credential the device has and it owns
-the network edge — it should come from Vault, not from a `.tf` file.
+**The `required_providers` alias must match the resource prefix.** Leaving it
+as `pr60x` while resources are `netgear_*` makes Terraform infer a second
+provider and hunt for `registry.terraform.io/hashicorp/netgear`.
 
-### A port forward is always two resources
+### Resources
 
-The device has no "external port" field. A forwarding rule references *service
-profiles by name* on both sides, and port translation is expressed by pointing
-the two sides at different profiles: point `external_service` at an `SSH-ALT`
-profile on port 2222 and `internal_service` at a plain `SSH` profile on 22, and
-the device translates between them.
+| Resource | Notes |
+| --- | --- |
+| `netgear_pr60x_service_profile` | Named protocol/port definition. Full CRUD verified live. |
+| `netgear_pr60x_port_forwarding_rule` | References service profiles **by name**. There is no external-port field, so port translation means pointing the two sides at different profiles. |
+| `netgear_pr60x_vlan_dhcp_dns` | DHCP option 6 — the usual cause of split DNS. |
+| `netgear_pr60x_remote_syslog` | Ships router logs to a UDP collector. |
+| `netgear_pr60x_sqm` | Bufferbloat shaping. Rates must be 300 Kbps - 5 Gbps *even when disabled*; error 3103 means out of range. |
+| `netgear_pr60x_upnp` | Exists mainly to be declared `false` and re-asserted. |
+| `netgear_pr60x_static_route` | **Unverified** — field names inferred; the device has no routes to read back. |
+| `netgear_xs508tm_igmp_snooping` | Ships off; multicast otherwise floods every port. |
+| `netgear_xs508tm_syslog_server` | Also sets the global remote-logging flag, which ships disabled — a server entry alone does nothing. |
 
-```hcl
-resource "netgear_pr60x_service_profile" "wg_kube" {
-  name       = "WG-KUBE"
-  proto      = "udp"
-  start_port = 51226
-  end_port   = 51226
-}
+Data sources: `netgear_pr60x_device_info`, `_service_profiles`,
+`_port_forwarding_rules`, `_vlan_profiles`, `_dhcp_leases`, `_wan_status`.
 
-resource "netgear_pr60x_port_forwarding_rule" "wg_kube" {
-  external_service = netgear_pr60x_service_profile.wg_kube.name
-  internal_service = netgear_pr60x_service_profile.wg_kube.name
-  dest_ip_address  = "192.168.1.72"
-}
-```
+## Exporters
 
-Reference `.name` rather than hardcoding the string, so Terraform orders the two
-correctly. Deleting a profile that a rule still references is refused by the
-provider rather than left to dangle.
+Both poll on their own schedule and serve a **cached snapshot** rather than
+touching the device per scrape. This is not premature caution: the router's
+config daemon wedges under rapid load, and the XS508TM's management web server
+returns 502 and then refuses connections outright when driven at Terraform's
+normal request rate. Neither affects the data plane — switching and routing
+carried on throughout — but these are small embedded servers and they do fall
+over.
 
-## Importing what already exists
+So: **one replica each**, a 60s default poll, and the binaries refuse an
+interval below 15s. The XS508TM client retries 502/503/504 and connection
+resets with backoff.
 
-Nothing here was created by Terraform, so start by importing:
+Port counters are exposed as **gauges, not counters**: the devices zero them on
+reboot with no reset signal, so Prometheus would read a reboot as a counter
+reset and invent an enormous rate.
 
 ```bash
-cd examples
-PR60X_PASSWORD=... terraform plan          # lists current ids
-terraform import netgear_pr60x_port_forwarding_rule.plex 0
-terraform import netgear_pr60x_service_profile.plex 13
+go build ./cmd/pr60x-exporter   && PR60X_PASSWORD=...   ./pr60x-exporter
+go build ./cmd/xs508tm-exporter && XS508TM_PASSWORD=... ./xs508tm-exporter
 ```
 
-## Prometheus exporter
-
-`cmd/pr60x-exporter` exposes the router's telemetry, sharing the same client as
-the provider. It gives you more than SNMP would: per-port byte/packet/error
-counters, link state and negotiated speed, chassis temperature and fan RPM,
-uptime, WAN state, pending alarms, DHCP lease counts, and how many
-port-forwards are enabled.
+Sample output:
 
 ```
 pr60x_up 1
-pr60x_info{firmware_version="2.7.0.111",product_id="PR60X",region="NA",...} 1
 pr60x_management_mode{mode="local"} 1
 pr60x_system_temperature_celsius 42
-pr60x_fan_speed_rpm 3057
-pr60x_uptime_seconds 2.789658e+06
-pr60x_internet_connected 1
-pr60x_port_link_speed_mbps{port="LAN4"} 10000
-pr60x_port_rx_bytes{port="wan1"} 8.140456886219e+12
-netgear_pr60x_dhcp_leases{vlan="VLAN1"} 27
-netgear_netgear_pr60x_port_forwarding_rules_enabled 9
+pr60x_firewall_connections 6400
+pr60x_upnp_enabled 0
+
+xs508tm_up 1
+xs508tm_igmp_snooping_enabled 1
+xs508tm_switch_rx_octets 4.286587466e+09
+xs508tm_lldp_neighbor{local_port="9",remote_sysname="PR60X"} 1
 ```
 
-**It polls on its own schedule and serves a cached snapshot** — it does not
-touch the router per scrape. That is the whole design: the device's config
-daemon degrades under rapid RPC load, and a scrape-driven exporter behind two
-Prometheus replicas at 15s would wedge it. Poll every 60s, scrape as often as
-you like, and watch `pr60x_last_scrape_timestamp_seconds` for staleness. The
-binary refuses an interval below 15s.
+### Deploying
 
-Run one replica. Each replica is another poller against an appliance that
-should not be polled hard, and a restart only costs one interval of staleness.
+`Dockerfile` builds a static binary on distroless; CI publishes multi-arch to
+GHCR. `deploy/kubernetes/` carries Deployment, Service and ServiceMonitor.
 
-Port counters are **gauges, not counters**, on purpose: the device zeroes them
-on reboot with no way to detect that except `pr60x_uptime_seconds` going
-backwards, and Prometheus would read a reboot as a counter reset and invent a
-huge rate.
+Two things that cost time the first time:
 
-```bash
-go build -o pr60x-exporter ./cmd/pr60x-exporter
-PR60X_PASSWORD=... ./pr60x-exporter --interval 60s
-curl -s localhost:9812/metrics | grep ^pr60x_
-```
-
-### Deploying it
-
-`Dockerfile` builds a static binary on distroless. For a mixed amd64/arm64
-cluster build both, or the pod only schedules on one architecture:
-
-```bash
-docker buildx build --platform linux/amd64,linux/arm64   -t <registry>/pr60x-exporter:v0.1.0 --push .
-```
-
-`deploy/kubernetes/pr60x-exporter.yaml` has a Namespace, Secret, Deployment,
-Service and ServiceMonitor. Set the image and namespace, then decide how the
-password arrives — the file ships a plain Secret as the obvious placeholder and
-carries a commented `VaultStaticSecret` writing to the same name and key, which
-is the better end state given this credential owns the network edge. Prometheus
-can discover it either through the `prometheus.io/*` pod annotations or the
-ServiceMonitor; delete whichever you don't use.
+- **`runAsNonRoot: true` needs an explicit `runAsUser`.** The distroless base
+  declares `USER nonroot` by *name*, and kubelet will not verify a non-numeric
+  user — it refuses with `CreateContainerConfigError`. Pin 65532.
+- Multi-arch matters on a mixed cluster; a single-arch image simply fails to
+  pull on the wrong node, with no obvious clue why.
 
 ## Building the provider
 
 ```bash
-go build -o ~/.terraform.d/plugins/local/mikebones/netgear/0.1.0/windows_amd64/terraform-provider-netgear.exe .
+go build -o ~/.terraform.d/plugins/local/mikebones/netgear/0.1.0/<os>_<arch>/terraform-provider-netgear .
 cd examples && terraform init && PR60X_PASSWORD=... terraform plan
 ```
 
-Adjust the OS/arch segment for other platforms. `terraform init` prints the
-directory it actually searched if the path is wrong.
-
-Note the CLI config gates local providers: `~/.terraformrc` (and on Windows
-`%APPDATA%/terraform.rc`) needs a `filesystem_mirror` whose `include` covers
-`local/*/*`.
-
-## Layout
-
-```
-internal/pr60x/     the client - transport, auth, all typed RPC methods
-internal/provider/  Terraform provider, built on internal/pr60x
-cmd/pr60x-exporter/ Prometheus exporter, built on internal/pr60x
-scripts/            Python used to reverse engineer the protocol
-deploy/kubernetes/  exporter manifests
-```
-
-The client lives in its own package so the provider and exporter share one
-implementation. The auth sequence, the configd pacing and the response quirks
-are the hard-won part; having them in two places would mean fixing them twice.
+`~/.terraformrc` (and `%APPDATA%/terraform.rc` on Windows) needs a
+`filesystem_mirror` whose `include` covers `local/*/*`.
 
 ## scripts/
 
@@ -235,110 +220,27 @@ Python, stdlib only, no dependencies.
 
 | Script | Purpose |
 | --- | --- |
-| `discover.py` | Calls every `get*` method, writes `discovery.json`. Read-only. |
-| `collect.py` | Re-collects specific methods with gentle pacing when configd has been upset. |
-| `roundtrip.py` | Confirms the service-profile add/delete payload shape. Mutating — snapshots first, cleans up, verifies. |
-| `roundtrip2.py` | Confirms the edit shape and the port-forwarding add/delete shapes. Mutating; its probe rule is created `enabled=0` so nothing is ever exposed. |
-| `set_dhcp_dns.py` | Sets DHCP option 6 for a VLAN, with `--show` and `--restore`. Snapshots, sends the profile back byte-for-byte with one field changed, and deep-diffs the result. |
-| `schemagen.py` | Reduces `discovery.json` to the value-free `schema.json`. |
-| `schema.json` | Committed schema reference: every method's response shape, no values. |
+| `discover.py` | Sweeps every PR60X `get*` method. Read-only. |
+| `collect.py` | Re-collects specific methods with gentle pacing after configd has been upset. |
+| `roundtrip.py` / `roundtrip2.py` | Confirm the PR60X write shapes. Mutating — snapshot first, clean up, verify. |
+| `set_dhcp_dns.py` | Sets DHCP option 6, with `--show` and `--restore`. |
+| `schemagen.py` | Reduces a discovery dump to the value-free `schema.json`. |
+| `xs508tm_discover.py` | Sweeps every XS508TM route safe to GET; refuses parameterised or state-changing ones. |
+| `ms510txup_login.py` | Ports the MS510TXUP's URL signing and password obfuscation. |
+| `*_routes.json`, `*_endpoints.json`, `wax630e_api.json` | The recovered API surfaces. |
 
-`discovery.json` is gitignored deliberately — it contains live DHCP lease
-hostnames and MAC addresses plus the WAN public address. `schema.json` is the
-committed equivalent.
-
-### Pinning security posture
-
-Some settings matter less for what they do than for staying put. Declaring them
-turns "UPnP is off" from something you believe into something Terraform
-re-asserts, so a firmware upgrade or someone clicking around the web UI shows
-up as drift:
-
-```hcl
-resource "netgear_pr60x_upnp" "off" {
-  enabled = false
-}
-```
-
-If UPnP is on, the port-forwarding rules you manage are not the whole story —
-LAN devices can open their own. The exporter's `netgear_pr60x_upnp_enabled`,
-`pr60x_dmz_enabled`, `pr60x_wan_ping_enabled` and `pr60x_secure_dns_enabled`
-barely move, which is the point: alert on the change, not the value.
-
-### Bufferbloat
-
-If latency is fine at idle and terrible whenever the uplink is busy, that is
-bufferbloat — packets queueing in an oversized buffer at the ISP. `netgear_pr60x_sqm`
-moves the queue onto the router where it can be managed:
-
-```hcl
-resource "netgear_pr60x_sqm" "wan" {
-  wan_index = 0
-  download  = 900   # ~85-95% of the line's REAL measured rate
-  upload    = 35
-}
-```
-
-Measure the real rate first rather than using the number on the bill; the
-device's own speed test will do. Note it validates the range even when
-disabled — download and upload must land between 300 Kbps and 5 Gbps, so a
-rate is required regardless of `enabled`, and error `3103` means you are
-outside it.
-
-### Fixing split DNS resolution
-
-If private names resolve only some of the time, check what your DHCP server
-advertises as option 6. Handing clients both a local resolver and a public one
-gives them two nameservers with no rule for choosing, so anything only the
-local resolver knows about fails roughly half the time — deterministically, but
-looking for all the world like flaky networking.
-
-```hcl
-resource "netgear_pr60x_vlan_dhcp_dns" "lan" {
-  vlan_id = 1
-  servers = ["192.168.1.64"] # local resolver only
-}
-```
-
-This resource adopts an existing VLAN and manages exactly one field. It will
-not create or destroy VLANs, and it does not touch addressing, the DHCP range
-or port membership. Changing option 6 cannot partition the network: it only
-affects what future leases advertise, and existing clients keep their current
-resolvers until they renew.
-
-Import the current value first, so the first plan tells you what is really set:
-
-```bash
-terraform import netgear_pr60x_vlan_dhcp_dns.lan 1
-```
-
-## Auditing your own device
-
-The read-only data sources are worth running even if you never manage anything
-with this provider. `netgear_netgear_pr60x_port_forwarding_rules` is the authoritative answer to
-"what is reachable from the internet?", which on most networks is recorded
-nowhere outside the appliance itself. `netgear_pr60x_vlan_profiles` exposes each VLAN's
-DHCP server state and its DHCP option 6 list, which is where surprising
-split-DNS behaviour usually turns out to originate.
+Discovery dumps and device running-configs are **gitignored**: they carry LAN
+inventory, WAN addresses and admin password hashes. `schema.json` is the
+value-free equivalent that is safe to commit.
 
 ## Known gaps
 
-- `netgear_pr60x_static_route` field names are unverified (above).
-- `getStaticLeaseProfiles` takes `{"vlanID": 1}` — capital ID, and it returns
-  `{"vlanID":…, "List":[…]}`. Confirmed working, currently empty, not yet wired
-  into a resource.
-- `getAttachedDevices` returns `-32603`, and `getCerts` / `getCertDetails`
-  return `-32602` bare — all three take parameters not yet worked out.
-- `getAppInstallState` / `getAppSettings` return `-32601`; those look
-  unimplemented on this model rather than mis-called.
-- VLAN profiles are deliberately read-only. Changing VLAN or DHCP settings can
-  partition the network from the machine running the apply.
-- `getWireGuardPeerProfiles` and `getWireGuardServerProfile` read cleanly, but
-  were only ever observed against a device with the router's own WireGuard
-  server disabled, so the populated shape is unknown.
-- `getTrafficRules`, `getUpnpSettings`, `getSnmpSettings` and
-  `getSecureDNSSettings` all read cleanly and are the next easy candidates;
-  their schemas are already in `schema.json`.
-- Dynamic, runtime-driven forwards (transmission peer ports, which change per
-  pod restart) are a poor fit for Terraform. That case belongs in the gomission
-  kopf operator, reusing this same protocol.
+- **MS510TXUP CGI authorization** — login works, data calls 404. This is the
+  blocker for its syslog, its DNS setting, and putting its config in Terraform.
+- **WAX630E login payload** — everything else about its protocol is mapped.
+- `netgear_pr60x_static_route` field names are unverified.
+- PR60X `getAttachedDevices` returns `-32603`; `getCerts` / `getCertDetails`
+  return `-32602`. All three take parameters not yet worked out.
+- Jumbo frames are available (`jumbo-frame <1522-10000>` on the MS510TXUP), but
+  MTU has to be changed end-to-end across switch, nodes and CNI together or it
+  produces blackholes that affect only large packets.

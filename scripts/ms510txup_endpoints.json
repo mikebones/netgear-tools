@@ -1,0 +1,2752 @@
+{
+  "chk_loginStatus": {
+    "cmd": "home_loginStatus",
+    "path": "cgi/set.cgi?cmd=home_loginStatus",
+    "verb": "set"
+  },
+  "get_cgiDbg": {
+    "cmd": "home_debug",
+    "path": "../cgi/get.cgi?cmd=home_debug",
+    "verb": "get"
+  },
+  "get_devicePanelStatus": {
+    "cmd": "home_sts",
+    "path": "../cgi/get.cgi?cmd=home_sts",
+    "verb": "get"
+  },
+  "get_deviceView": {
+    "cmd": "home_view",
+    "path": "../cgi/get.cgi?cmd=home_view",
+    "verb": "get"
+  },
+  "get_empty": {
+    "cmd": "home_empty",
+    "path": "../cgi/get.cgi?cmd=home_empty",
+    "verb": "get"
+  },
+  "get_helpRegister": {
+    "cmd": "sys_registration",
+    "path": "../cgi/get.cgi?cmd=sys_registration",
+    "verb": "get"
+  },
+  "get_homePage": {
+    "cmd": "home_home",
+    "path": "cgi/get.cgi?cmd=home_home",
+    "verb": "get"
+  },
+  "get_loginInfo": {
+    "cmd": "home_login",
+    "path": "cgi/get.cgi?cmd=home_login",
+    "verb": "get"
+  },
+  "get_maintainDownloadHttp": {
+    "cmd": "file_http_download",
+    "path": "../cgi/get.cgi?cmd=file_http_download",
+    "verb": "get"
+  },
+  "get_maintainDownloadStatusHttp": {
+    "cmd": "file_http_downloadStatus",
+    "path": "../cgi/get.cgi?cmd=file_http_downloadStatus",
+    "verb": "get"
+  },
+  "get_maintainDownloadStatusTftp": {
+    "cmd": "file_tftp_downloadStatus",
+    "path": "../cgi/get.cgi?cmd=file_tftp_downloadStatus",
+    "verb": "get"
+  },
+  "get_maintainDownloadStatusUSB": {
+    "cmd": "file_usb_downloadStatus",
+    "path": "../cgi/get.cgi?cmd=file_usb_downloadStatus",
+    "verb": "get"
+  },
+  "get_maintainDownloadTftp": {
+    "cmd": "file_tftp_download",
+    "path": "../cgi/get.cgi?cmd=file_tftp_download",
+    "verb": "get"
+  },
+  "get_maintainDownloadUSB": {
+    "cmd": "file_usb_download",
+    "path": "../cgi/get.cgi?cmd=file_usb_download",
+    "verb": "get"
+  },
+  "get_maintainExportHttp": {
+    "cmd": "file_http_export",
+    "path": "../cgi/get.cgi?cmd=file_http_export",
+    "verb": "get"
+  },
+  "get_maintainExportStatusTftp": {
+    "cmd": "file_tftp_exportStatus",
+    "path": "../cgi/get.cgi?cmd=file_tftp_exportStatus",
+    "verb": "get"
+  },
+  "get_maintainExportStatusUSB": {
+    "cmd": "file_usb_exportStatus",
+    "path": "../cgi/get.cgi?cmd=file_usb_exportStatus",
+    "verb": "get"
+  },
+  "get_maintainExportTftp": {
+    "cmd": "file_tftp_export",
+    "path": "../cgi/get.cgi?cmd=file_tftp_export",
+    "verb": "get"
+  },
+  "get_maintainExportUSB": {
+    "cmd": "file_usb_export",
+    "path": "../cgi/get.cgi?cmd=file_usb_export",
+    "verb": "get"
+  },
+  "get_maintainFileCopy": {
+    "cmd": "file_copy",
+    "path": "../cgi/get.cgi?cmd=file_copy",
+    "verb": "get"
+  },
+  "get_maintainFileCopyStatus": {
+    "cmd": "file_copyStatus",
+    "path": "../cgi/get.cgi?cmd=file_copyStatus",
+    "verb": "get"
+  },
+  "get_maintainFileDualConf": {
+    "cmd": "file_dualConf",
+    "path": "../cgi/get.cgi?cmd=file_dualConf",
+    "verb": "get"
+  },
+  "get_maintainFileDualStatus": {
+    "cmd": "file_dualStatus",
+    "path": "../cgi/get.cgi?cmd=file_dualStatus",
+    "verb": "get"
+  },
+  "get_maintainResetFactoryDft": {
+    "cmd": "sys_restore",
+    "path": "../cgi/get.cgi?cmd=sys_restore",
+    "verb": "get"
+  },
+  "get_maintainResetReboot": {
+    "cmd": "sys_reboot",
+    "path": "../cgi/get.cgi?cmd=sys_reboot",
+    "verb": "get"
+  },
+  "get_maintainTroubleDiag": {
+    "cmd": "diag_remote",
+    "path": "../cgi/get.cgi?cmd=diag_remote",
+    "verb": "get"
+  },
+  "get_maintainTroubleMemory": {
+    "cmd": "diag_memory",
+    "path": "../cgi/get.cgi?cmd=diag_memory",
+    "verb": "get"
+  },
+  "get_maintainTroublePingIpv4": {
+    "cmd": "diag_ping",
+    "path": "../cgi/get.cgi?cmd=diag_ping",
+    "verb": "get"
+  },
+  "get_maintainTroublePingIpv6": {
+    "cmd": "diag_ping",
+    "path": "../cgi/get.cgi?cmd=diag_ping",
+    "verb": "get"
+  },
+  "get_maintainTroubleReverse": {
+    "cmd": "diag_reverse",
+    "path": "../cgi/get.cgi?cmd=diag_reverse",
+    "verb": "get"
+  },
+  "get_maintainTroubleTracerouteIpv4": {
+    "cmd": "diag_traceroute",
+    "path": "../cgi/get.cgi?cmd=diag_traceroute",
+    "verb": "get"
+  },
+  "get_maintainTroubleTracerouteIpv6": {
+    "cmd": "diag_traceroute",
+    "path": "../cgi/get.cgi?cmd=diag_traceroute",
+    "verb": "get"
+  },
+  "get_modulus": {
+    "cmd": "home_modulus",
+    "path": "../cgi/get.cgi?cmd=home_modulus",
+    "verb": "get"
+  },
+  "get_monitor": {
+    "cmd": "home_monitor",
+    "path": "cgi/get.cgi?cmd=home_monitor",
+    "verb": "get"
+  },
+  "get_monitorLogEvent": {
+    "cmd": "log_event",
+    "path": "../cgi/get.cgi?cmd=log_event",
+    "verb": "get"
+  },
+  "get_monitorLogFlash": {
+    "cmd": "log_flash",
+    "path": "../cgi/get.cgi?cmd=log_flash",
+    "verb": "get"
+  },
+  "get_monitorLogRam": {
+    "cmd": "log_ram",
+    "path": "../cgi/get.cgi?cmd=log_ram",
+    "verb": "get"
+  },
+  "get_monitorLogServer": {
+    "cmd": "log_remote",
+    "path": "../cgi/get.cgi?cmd=log_remote",
+    "verb": "get"
+  },
+  "get_monitorLogTrap": {
+    "cmd": "log_trap",
+    "path": "../cgi/get.cgi?cmd=log_trap",
+    "verb": "get"
+  },
+  "get_monitorPortMirror": {
+    "cmd": "mirror_port",
+    "path": "../cgi/get.cgi?cmd=mirror_port",
+    "verb": "get"
+  },
+  "get_monitorPortsCableTest": {
+    "cmd": "diag_copper",
+    "path": "../cgi/get.cgi?cmd=diag_copper",
+    "verb": "get"
+  },
+  "get_monitorPortsEapStatis": {
+    "cmd": "dot1x_portEapSts",
+    "path": "../cgi/get.cgi?cmd=dot1x_portEapSts",
+    "verb": "get"
+  },
+  "get_monitorPortsPortDetailStatistics": {
+    "cmd": "port_portDetailStatistics",
+    "path": "../cgi/get.cgi?cmd=port_portDetailStatistics",
+    "verb": "get"
+  },
+  "get_monitorPortsPortStatistics": {
+    "cmd": "port_portStatistics",
+    "path": "../cgi/get.cgi?cmd=port_portStatistics",
+    "verb": "get"
+  },
+  "get_monitorPortsSwStatistics": {
+    "cmd": "port_swStatistics",
+    "path": "../cgi/get.cgi?cmd=port_swStatistics",
+    "verb": "get"
+  },
+  "get_qosCos1p2Queue": {
+    "cmd": "qos_1p2Que",
+    "path": "../cgi/get.cgi?cmd=qos_1p2Que",
+    "verb": "get"
+  },
+  "get_qosCosCos": {
+    "cmd": "qos_cos",
+    "path": "../cgi/get.cgi?cmd=qos_cos",
+    "verb": "get"
+  },
+  "get_qosCosDscp2Queue": {
+    "cmd": "qos_dscp2Que",
+    "path": "../cgi/get.cgi?cmd=qos_dscp2Que",
+    "verb": "get"
+  },
+  "get_qosCosIntf": {
+    "cmd": "qos_cosIntf",
+    "path": "../cgi/get.cgi?cmd=qos_cosIntf",
+    "verb": "get"
+  },
+  "get_qosCosIntfQueue": {
+    "cmd": "qos_cosIntfQue",
+    "path": "../cgi/get.cgi?cmd=qos_cosIntfQue",
+    "verb": "get"
+  },
+  "get_qosDiffClass": {
+    "cmd": "qos_class",
+    "path": "../cgi/get.cgi?cmd=qos_class",
+    "verb": "get"
+  },
+  "get_qosDiffClassConf": {
+    "cmd": "qos_classConf",
+    "path": "../cgi/get.cgi?cmd=qos_classConf",
+    "verb": "get"
+  },
+  "get_qosDiffClassIpv6": {
+    "cmd": "qos_classIpv6",
+    "path": "../cgi/get.cgi?cmd=qos_classIpv6",
+    "verb": "get"
+  },
+  "get_qosDiffClassIpv6Conf": {
+    "cmd": "qos_classIpv6Conf",
+    "path": "../cgi/get.cgi?cmd=qos_classIpv6Conf",
+    "verb": "get"
+  },
+  "get_qosDiffConf": {
+    "cmd": "qos_diff",
+    "path": "../cgi/get.cgi?cmd=qos_diff",
+    "verb": "get"
+  },
+  "get_qosDiffPolicy": {
+    "cmd": "qos_policy",
+    "path": "../cgi/get.cgi?cmd=qos_policy",
+    "verb": "get"
+  },
+  "get_qosDiffPolicyConf": {
+    "cmd": "qos_policyConf",
+    "path": "../cgi/get.cgi?cmd=qos_policyConf",
+    "verb": "get"
+  },
+  "get_qosDiffService": {
+    "cmd": "qos_bind",
+    "path": "../cgi/get.cgi?cmd=qos_bind",
+    "verb": "get"
+  },
+  "get_qosDiffServiceStat": {
+    "cmd": "qos_bindStat",
+    "path": "../cgi/get.cgi?cmd=qos_bindStat",
+    "verb": "get"
+  },
+  "get_routeArpCache": {
+    "cmd": "route_arpCache",
+    "path": "../cgi/get.cgi?cmd=route_arpCache",
+    "verb": "get"
+  },
+  "get_routeArpConf": {
+    "cmd": "route_arpConf",
+    "path": "../cgi/get.cgi?cmd=route_arpConf",
+    "verb": "get"
+  },
+  "get_routeArpCreate": {
+    "cmd": "route_arpCreate",
+    "path": "../cgi/get.cgi?cmd=route_arpCreate",
+    "verb": "get"
+  },
+  "get_routeDiscov": {
+    "cmd": "route_discov",
+    "path": "../cgi/get.cgi?cmd=route_discov",
+    "verb": "get"
+  },
+  "get_routeIPConf": {
+    "cmd": "route_ipConf",
+    "path": "../cgi/get.cgi?cmd=route_ipConf",
+    "verb": "get"
+  },
+  "get_routeIPStatistic": {
+    "cmd": "route_ipStatistic",
+    "path": "../cgi/get.cgi?cmd=route_ipStatistic",
+    "verb": "get"
+  },
+  "get_routeIPv6Conf": {
+    "cmd": "route_ipv6Conf",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Conf",
+    "verb": "get"
+  },
+  "get_routeIPv6Neigh": {
+    "cmd": "route_ipv6Neighbor",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Neighbor",
+    "verb": "get"
+  },
+  "get_routeIPv6Prefer": {
+    "cmd": "route_ipv6Prefer",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Prefer",
+    "verb": "get"
+  },
+  "get_routeIPv6Prefix": {
+    "cmd": "route_ipv6Prefix",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Prefix",
+    "verb": "get"
+  },
+  "get_routeIPv6Static": {
+    "cmd": "route_ipv6Static",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Static",
+    "verb": "get"
+  },
+  "get_routeIPv6Statistic": {
+    "cmd": "route_ipv6Statistic",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Statistic",
+    "verb": "get"
+  },
+  "get_routeIPv6Tbl": {
+    "cmd": "route_ipv6Tbl",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Tbl",
+    "verb": "get"
+  },
+  "get_routeIPv6Vlan": {
+    "cmd": "route_ipv6Vlan",
+    "path": "../cgi/get.cgi?cmd=route_ipv6Vlan",
+    "verb": "get"
+  },
+  "get_routeTbl": {
+    "cmd": "route_tbl",
+    "path": "../cgi/get.cgi?cmd=route_tbl",
+    "verb": "get"
+  },
+  "get_routeVlanConf": {
+    "cmd": "route_vlanConf",
+    "path": "../cgi/get.cgi?cmd=route_vlanConf",
+    "verb": "get"
+  },
+  "get_routeVlanWizard": {
+    "cmd": "route_vlanWizard",
+    "path": "../cgi/get.cgi?cmd=route_vlanWizard",
+    "verb": "get"
+  },
+  "get_secACLWizard": {
+    "cmd": "acl_wizard",
+    "path": "../cgi/get.cgi?cmd=acl_wizard",
+    "verb": "get"
+  },
+  "get_secAccessCtrl": {
+    "cmd": "aclMgmt_profile",
+    "path": "../cgi/get.cgi?cmd=aclMgmt_profile",
+    "verb": "get"
+  },
+  "get_secAccessCtrlRule": {
+    "cmd": "aclMgmt_rule",
+    "path": "../cgi/get.cgi?cmd=aclMgmt_rule",
+    "verb": "get"
+  },
+  "get_secAccessHttp": {
+    "cmd": "access_http",
+    "path": "../cgi/get.cgi?cmd=access_http",
+    "verb": "get"
+  },
+  "get_secAccessHttps": {
+    "cmd": "access_https",
+    "path": "../cgi/get.cgi?cmd=access_https",
+    "verb": "get"
+  },
+  "get_secAccessHttpsCert": {
+    "cmd": "access_httpsCert",
+    "path": "../cgi/get.cgi?cmd=access_httpsCert",
+    "verb": "get"
+  },
+  "get_secAccessHttpsCertDl": {
+    "cmd": "access_httpsCertDl",
+    "path": "../cgi/get.cgi?cmd=access_httpsCertDl",
+    "verb": "get"
+  },
+  "get_secAccessSSH": {
+    "cmd": "access_ssh",
+    "path": "../cgi/get.cgi?cmd=access_ssh",
+    "verb": "get"
+  },
+  "get_secAccessSSHKeyDl": {
+    "cmd": "access_sshKeyDl",
+    "path": "../cgi/get.cgi?cmd=access_sshKeyDl",
+    "verb": "get"
+  },
+  "get_secAccessSSHKeyMgmt": {
+    "cmd": "access_sshKeyMgmt",
+    "path": "../cgi/get.cgi?cmd=access_sshKeyMgmt",
+    "verb": "get"
+  },
+  "get_secAuthDot1x": {
+    "cmd": "dot1x_glb",
+    "path": "../cgi/get.cgi?cmd=dot1x_glb",
+    "verb": "get"
+  },
+  "get_secAuthDot1xClientSummary": {
+    "cmd": "dot1x_clientSumm",
+    "path": "../cgi/get.cgi?cmd=dot1x_clientSumm",
+    "verb": "get"
+  },
+  "get_secAuthDot1xPort": {
+    "cmd": "dot1x_port",
+    "path": "../cgi/get.cgi?cmd=dot1x_port",
+    "verb": "get"
+  },
+  "get_secAuthDot1xPortSummary": {
+    "cmd": "dot1x_portSumm",
+    "path": "../cgi/get.cgi?cmd=dot1x_portSumm",
+    "verb": "get"
+  },
+  "get_secIPACE": {
+    "cmd": "acl_ipAce",
+    "path": "../cgi/get.cgi?cmd=acl_ipAce",
+    "verb": "get"
+  },
+  "get_secIPACEExt": {
+    "cmd": "acl_ipExtAce",
+    "path": "../cgi/get.cgi?cmd=acl_ipExtAce",
+    "verb": "get"
+  },
+  "get_secIPACL": {
+    "cmd": "acl_ipAcl",
+    "path": "../cgi/get.cgi?cmd=acl_ipAcl",
+    "verb": "get"
+  },
+  "get_secIPBind": {
+    "cmd": "acl_portBind",
+    "path": "../cgi/get.cgi?cmd=acl_portBind",
+    "verb": "get"
+  },
+  "get_secIPBindTbl": {
+    "cmd": "acl_portBindTbl",
+    "path": "../cgi/get.cgi?cmd=acl_portBindTbl",
+    "verb": "get"
+  },
+  "get_secIPv6ACE": {
+    "cmd": "acl_ipv6Ace",
+    "path": "../cgi/get.cgi?cmd=acl_ipv6Ace",
+    "verb": "get"
+  },
+  "get_secIPv6ACL": {
+    "cmd": "acl_ipv6Acl",
+    "path": "../cgi/get.cgi?cmd=acl_ipv6Acl",
+    "verb": "get"
+  },
+  "get_secMACACE": {
+    "cmd": "acl_macAce",
+    "path": "../cgi/get.cgi?cmd=acl_macAce",
+    "verb": "get"
+  },
+  "get_secMACACL": {
+    "cmd": "acl_macAcl",
+    "path": "../cgi/get.cgi?cmd=acl_macAcl",
+    "verb": "get"
+  },
+  "get_secMACBind": {
+    "cmd": "acl_portBind",
+    "path": "../cgi/get.cgi?cmd=acl_portBind",
+    "verb": "get"
+  },
+  "get_secMACBindTbl": {
+    "cmd": "acl_portBindTbl",
+    "path": "../cgi/get.cgi?cmd=acl_portBindTbl",
+    "verb": "get"
+  },
+  "get_secMgmtAuthDot1x": {
+    "cmd": "aaa_authDot1x",
+    "path": "../cgi/get.cgi?cmd=aaa_authDot1x",
+    "verb": "get"
+  },
+  "get_secMgmtAuthHttp": {
+    "cmd": "aaa_authHttp",
+    "path": "../cgi/get.cgi?cmd=aaa_authHttp",
+    "verb": "get"
+  },
+  "get_secMgmtAuthHttps": {
+    "cmd": "aaa_authHttps",
+    "path": "../cgi/get.cgi?cmd=aaa_authHttps",
+    "verb": "get"
+  },
+  "get_secMgmtRadius": {
+    "cmd": "radius_glb",
+    "path": "../cgi/get.cgi?cmd=radius_glb",
+    "verb": "get"
+  },
+  "get_secMgmtRadiusAcct": {
+    "cmd": "radius_acct",
+    "path": "../cgi/get.cgi?cmd=radius_acct",
+    "verb": "get"
+  },
+  "get_secMgmtRadiusSrv": {
+    "cmd": "radius_srv",
+    "path": "../cgi/get.cgi?cmd=radius_srv",
+    "verb": "get"
+  },
+  "get_secMgmtSccCtrl": {
+    "cmd": "sys_sccd",
+    "path": "../cgi/get.cgi?cmd=sys_sccd",
+    "verb": "get"
+  },
+  "get_secMgmtTacacs": {
+    "cmd": "tac_glb",
+    "path": "../cgi/get.cgi?cmd=tac_glb",
+    "verb": "get"
+  },
+  "get_secMgmtTacacsSrv": {
+    "cmd": "tac_srv",
+    "path": "../cgi/get.cgi?cmd=tac_srv",
+    "verb": "get"
+  },
+  "get_secMgmtUser": {
+    "cmd": "sys_pwd",
+    "path": "../cgi/get.cgi?cmd=sys_pwd",
+    "verb": "get"
+  },
+  "get_secTcFilter": {
+    "cmd": "filter_entry",
+    "path": "../cgi/get.cgi?cmd=filter_entry",
+    "verb": "get"
+  },
+  "get_secTcFilterSummary": {
+    "cmd": "filter_entrySumm",
+    "path": "../cgi/get.cgi?cmd=filter_entrySumm",
+    "verb": "get"
+  },
+  "get_secTcPrivateVlanAssociation": {
+    "cmd": "vlan_privateAssociation",
+    "path": "../cgi/get.cgi?cmd=vlan_privateAssociation",
+    "verb": "get"
+  },
+  "get_secTcPrivateVlanHost": {
+    "cmd": "vlan_privateHost",
+    "path": "../cgi/get.cgi?cmd=vlan_privateHost",
+    "verb": "get"
+  },
+  "get_secTcPrivateVlanPortMode": {
+    "cmd": "vlan_privatePortMode",
+    "path": "../cgi/get.cgi?cmd=vlan_privatePortMode",
+    "verb": "get"
+  },
+  "get_secTcPrivateVlanPromiscuous": {
+    "cmd": "vlan_privatePromiscuous",
+    "path": "../cgi/get.cgi?cmd=vlan_privatePromiscuous",
+    "verb": "get"
+  },
+  "get_secTcPrivateVlanType": {
+    "cmd": "vlan_privateType",
+    "path": "../cgi/get.cgi?cmd=vlan_privateType",
+    "verb": "get"
+  },
+  "get_secTcProtect": {
+    "cmd": "port_protect",
+    "path": "../cgi/get.cgi?cmd=port_protect",
+    "verb": "get"
+  },
+  "get_secTcPsecure": {
+    "cmd": "psecure_glb",
+    "path": "../cgi/get.cgi?cmd=psecure_glb",
+    "verb": "get"
+  },
+  "get_secTcPsecureIntf": {
+    "cmd": "psecure_intf",
+    "path": "../cgi/get.cgi?cmd=psecure_intf",
+    "verb": "get"
+  },
+  "get_secTcPsecureMac": {
+    "cmd": "psecure_mac",
+    "path": "../cgi/get.cgi?cmd=psecure_mac",
+    "verb": "get"
+  },
+  "get_secTcStorm": {
+    "cmd": "storm_cfg",
+    "path": "../cgi/get.cgi?cmd=storm_cfg",
+    "verb": "get"
+  },
+  "get_secVlanBindTbl": {
+    "cmd": "acl_vlanBind",
+    "path": "../cgi/get.cgi?cmd=acl_vlanBind",
+    "verb": "get"
+  },
+  "get_switchAutoVlanOUIBased": {
+    "cmd": "vlan_auto_oui",
+    "path": "../cgi/get.cgi?cmd=vlan_auto_oui",
+    "verb": "get"
+  },
+  "get_switchAutoVlanOUIBasedPort": {
+    "cmd": "vlan_auto_ouiPort",
+    "path": "../cgi/get.cgi?cmd=vlan_auto_ouiPort",
+    "verb": "get"
+  },
+  "get_switchAutoVlanOUIBasedTable": {
+    "cmd": "vlan_auto_ouiTable",
+    "path": "../cgi/get.cgi?cmd=vlan_auto_ouiTable",
+    "verb": "get"
+  },
+  "get_switchAvOUIBased": {
+    "cmd": "vlan_oui",
+    "path": "../cgi/get.cgi?cmd=vlan_oui",
+    "verb": "get"
+  },
+  "get_switchAvOUIBasedPort": {
+    "cmd": "vlan_ouiPort",
+    "path": "../cgi/get.cgi?cmd=vlan_ouiPort",
+    "verb": "get"
+  },
+  "get_switchAvOUIBasedTable": {
+    "cmd": "vlan_ouiTable",
+    "path": "../cgi/get.cgi?cmd=vlan_ouiTable",
+    "verb": "get"
+  },
+  "get_switchAvProtocolBasedPort": {
+    "cmd": "vlan_voipPort",
+    "path": "../cgi/get.cgi?cmd=vlan_voipPort",
+    "verb": "get"
+  },
+  "get_switchAvStatus": {
+    "cmd": "vlan_voipStatus",
+    "path": "../cgi/get.cgi?cmd=vlan_voipStatus",
+    "verb": "get"
+  },
+  "get_switchDVLANConf": {
+    "cmd": "vlan_dvlan",
+    "path": "../cgi/get.cgi?cmd=vlan_dvlan",
+    "verb": "get"
+  },
+  "get_switchLagCfg": {
+    "cmd": "lag_cfg",
+    "path": "../cgi/get.cgi?cmd=lag_cfg",
+    "verb": "get"
+  },
+  "get_switchLagLacpCfg": {
+    "cmd": "lag_lacpCfg",
+    "path": "../cgi/get.cgi?cmd=lag_lacpCfg",
+    "verb": "get"
+  },
+  "get_switchLagLacpPortCfg": {
+    "cmd": "lag_lacpPortCfg",
+    "path": "../cgi/get.cgi?cmd=lag_lacpPortCfg",
+    "verb": "get"
+  },
+  "get_switchLagMbr": {
+    "cmd": "lag_mbr",
+    "path": "../cgi/get.cgi?cmd=lag_mbr",
+    "verb": "get"
+  },
+  "get_switchLoopProtection": {
+    "cmd": "loop_protect",
+    "path": "../cgi/get.cgi?cmd=loop_protect",
+    "verb": "get"
+  },
+  "get_switchMacAddrTable": {
+    "cmd": "mac_tbl",
+    "path": "../cgi/get.cgi?cmd=mac_tbl",
+    "verb": "get"
+  },
+  "get_switchMacDynamicAddr": {
+    "cmd": "mac_dyn",
+    "path": "../cgi/get.cgi?cmd=mac_dyn",
+    "verb": "get"
+  },
+  "get_switchMacStaticAddr": {
+    "cmd": "mac_static",
+    "path": "../cgi/get.cgi?cmd=mac_static",
+    "verb": "get"
+  },
+  "get_switchMcastAv": {
+    "cmd": "mcast_av",
+    "path": "../cgi/get.cgi?cmd=mcast_av",
+    "verb": "get"
+  },
+  "get_switchMcastFwdAll": {
+    "cmd": "mcast_fwdAll",
+    "path": "../cgi/get.cgi?cmd=mcast_fwdAll",
+    "verb": "get"
+  },
+  "get_switchMcastGroup": {
+    "cmd": "mcast_group",
+    "path": "../cgi/get.cgi?cmd=mcast_group",
+    "verb": "get"
+  },
+  "get_switchMcastGroupMbr": {
+    "cmd": "mcast_groupMbr",
+    "path": "../cgi/get.cgi?cmd=mcast_groupMbr",
+    "verb": "get"
+  },
+  "get_switchMcastIgsGlobal": {
+    "cmd": "mcast_igsGlobal",
+    "path": "../cgi/get.cgi?cmd=mcast_igsGlobal",
+    "verb": "get"
+  },
+  "get_switchMcastIgsIntf": {
+    "cmd": "mcast_igsIntf",
+    "path": "../cgi/get.cgi?cmd=mcast_igsIntf",
+    "verb": "get"
+  },
+  "get_switchMcastIgsQry": {
+    "cmd": "mcast_igsQry",
+    "path": "../cgi/get.cgi?cmd=mcast_igsQry",
+    "verb": "get"
+  },
+  "get_switchMcastIgsQryStat": {
+    "cmd": "mcast_igsQryStat",
+    "path": "../cgi/get.cgi?cmd=mcast_igsQryStat",
+    "verb": "get"
+  },
+  "get_switchMcastIgsQryVlan": {
+    "cmd": "mcast_igsQryVlan",
+    "path": "../cgi/get.cgi?cmd=mcast_igsQryVlan",
+    "verb": "get"
+  },
+  "get_switchMcastIgsRtIntf": {
+    "cmd": "mcast_igsRtIntf",
+    "path": "../cgi/get.cgi?cmd=mcast_igsRtIntf",
+    "verb": "get"
+  },
+  "get_switchMcastIgsRtVlan": {
+    "cmd": "mcast_igsRtVlan",
+    "path": "../cgi/get.cgi?cmd=mcast_igsRtVlan",
+    "verb": "get"
+  },
+  "get_switchMcastIgsTb": {
+    "cmd": "mcast_igsTb",
+    "path": "../cgi/get.cgi?cmd=mcast_igsTb",
+    "verb": "get"
+  },
+  "get_switchMcastIgsVlan": {
+    "cmd": "mcast_igsVlan",
+    "path": "../cgi/get.cgi?cmd=mcast_igsVlan",
+    "verb": "get"
+  },
+  "get_switchMcastMfdbStat": {
+    "cmd": "mcast_mfdbStat",
+    "path": "../cgi/get.cgi?cmd=mcast_mfdbStat",
+    "verb": "get"
+  },
+  "get_switchMcastMfdbTb": {
+    "cmd": "mcast_mfdb",
+    "path": "../cgi/get.cgi?cmd=mcast_mfdb",
+    "verb": "get"
+  },
+  "get_switchMcastMldGlobal": {
+    "cmd": "mcast_mldGlobal",
+    "path": "../cgi/get.cgi?cmd=mcast_mldGlobal",
+    "verb": "get"
+  },
+  "get_switchMcastMldIntf": {
+    "cmd": "mcast_mldIntf",
+    "path": "../cgi/get.cgi?cmd=mcast_mldIntf",
+    "verb": "get"
+  },
+  "get_switchMcastMldQry": {
+    "cmd": "mcast_mldQry",
+    "path": "../cgi/get.cgi?cmd=mcast_mldQry",
+    "verb": "get"
+  },
+  "get_switchMcastMldQryVlan": {
+    "cmd": "mcast_mldQryVlan",
+    "path": "../cgi/get.cgi?cmd=mcast_mldQryVlan",
+    "verb": "get"
+  },
+  "get_switchMcastMldRtIntf": {
+    "cmd": "mcast_mldRtIntf",
+    "path": "../cgi/get.cgi?cmd=mcast_mldRtIntf",
+    "verb": "get"
+  },
+  "get_switchMcastMldRtVlan": {
+    "cmd": "mcast_mldRtVlan",
+    "path": "../cgi/get.cgi?cmd=mcast_mldRtVlan",
+    "verb": "get"
+  },
+  "get_switchMcastMldVlan": {
+    "cmd": "mcast_mldVlan",
+    "path": "../cgi/get.cgi?cmd=mcast_mldVlan",
+    "verb": "get"
+  },
+  "get_switchMvrGlobal": {
+    "cmd": "mvr_global",
+    "path": "../cgi/get.cgi?cmd=mvr_global",
+    "verb": "get"
+  },
+  "get_switchMvrGroupCfg": {
+    "cmd": "mvr_groupCfg",
+    "path": "../cgi/get.cgi?cmd=mvr_groupCfg",
+    "verb": "get"
+  },
+  "get_switchMvrGroupMbr": {
+    "cmd": "mvr_groupMbr",
+    "path": "../cgi/get.cgi?cmd=mvr_groupMbr",
+    "verb": "get"
+  },
+  "get_switchMvrIntf": {
+    "cmd": "mvr_intf",
+    "path": "../cgi/get.cgi?cmd=mvr_intf",
+    "verb": "get"
+  },
+  "get_switchMvrStat": {
+    "cmd": "mvr_stat",
+    "path": "../cgi/get.cgi?cmd=mvr_stat",
+    "verb": "get"
+  },
+  "get_switchPortsPort": {
+    "cmd": "port_port",
+    "path": "../cgi/get.cgi?cmd=port_port",
+    "verb": "get"
+  },
+  "get_switchStpConf": {
+    "cmd": "stp_conf",
+    "path": "../cgi/get.cgi?cmd=stp_conf",
+    "verb": "get"
+  },
+  "get_switchStpCstConf": {
+    "cmd": "stp_cst",
+    "path": "../cgi/get.cgi?cmd=stp_cst",
+    "verb": "get"
+  },
+  "get_switchStpCstPortConf": {
+    "cmd": "stp_cstPortConf",
+    "path": "../cgi/get.cgi?cmd=stp_cstPortConf",
+    "verb": "get"
+  },
+  "get_switchStpCstPortStatus": {
+    "cmd": "stp_cstPortStatus",
+    "path": "../cgi/get.cgi?cmd=stp_cstPortStatus",
+    "verb": "get"
+  },
+  "get_switchStpMstConf": {
+    "cmd": "stp_mst",
+    "path": "../cgi/get.cgi?cmd=stp_mst",
+    "verb": "get"
+  },
+  "get_switchStpMstPortConf": {
+    "cmd": "stp_mstPortConf",
+    "path": "../cgi/get.cgi?cmd=stp_mstPortConf",
+    "verb": "get"
+  },
+  "get_switchStpRstp": {
+    "cmd": "stp_rstp",
+    "path": "../cgi/get.cgi?cmd=stp_rstp",
+    "verb": "get"
+  },
+  "get_switchStpStats": {
+    "cmd": "stp_stats",
+    "path": "../cgi/get.cgi?cmd=stp_stats",
+    "verb": "get"
+  },
+  "get_switchTrunkConf": {
+    "cmd": "vlan_trunking",
+    "path": "../cgi/get.cgi?cmd=vlan_trunking",
+    "verb": "get"
+  },
+  "get_switchVlanConf": {
+    "cmd": "vlan_conf",
+    "path": "../cgi/get.cgi?cmd=vlan_conf",
+    "verb": "get"
+  },
+  "get_switchVlanGarp": {
+    "cmd": "vlan_gvrp",
+    "path": "../cgi/get.cgi?cmd=vlan_gvrp",
+    "verb": "get"
+  },
+  "get_switchVlanGarpPort": {
+    "cmd": "vlan_gvrp_port",
+    "path": "../cgi/get.cgi?cmd=vlan_gvrp_port",
+    "verb": "get"
+  },
+  "get_switchVlanIntf": {
+    "cmd": "vlan_intf",
+    "path": "../cgi/get.cgi?cmd=vlan_intf",
+    "verb": "get"
+  },
+  "get_switchVlanMac": {
+    "cmd": "vlan_mac",
+    "path": "../cgi/get.cgi?cmd=vlan_mac",
+    "verb": "get"
+  },
+  "get_switchVlanMbr": {
+    "cmd": "vlan_membership",
+    "path": "../cgi/get.cgi?cmd=vlan_membership",
+    "verb": "get"
+  },
+  "get_switchVlanProto": {
+    "cmd": "vlan_proto",
+    "path": "../cgi/get.cgi?cmd=vlan_proto",
+    "verb": "get"
+  },
+  "get_switchVlanProtoMbr": {
+    "cmd": "vlan_proto_mbr",
+    "path": "../cgi/get.cgi?cmd=vlan_proto_mbr",
+    "verb": "get"
+  },
+  "get_switchVlanStatus": {
+    "cmd": "vlan_status",
+    "path": "../cgi/get.cgi?cmd=vlan_status",
+    "verb": "get"
+  },
+  "get_switchVlanVoice": {
+    "cmd": "vlan_voiceVlan",
+    "path": "../cgi/get.cgi?cmd=vlan_voiceVlan",
+    "verb": "get"
+  },
+  "get_sysLldpLocal": {
+    "cmd": "lldp_local",
+    "path": "../cgi/get.cgi?cmd=lldp_local",
+    "verb": "get"
+  },
+  "get_sysLldpLocalDetail": {
+    "cmd": "lldp_localDetail",
+    "path": "../cgi/get.cgi?cmd=lldp_localDetail",
+    "verb": "get"
+  },
+  "get_sysLldpMedPolicy": {
+    "cmd": "lldp_medPolicy",
+    "path": "../cgi/get.cgi?cmd=lldp_medPolicy",
+    "verb": "get"
+  },
+  "get_sysLldpMedPort": {
+    "cmd": "lldp_medPort",
+    "path": "../cgi/get.cgi?cmd=lldp_medPort",
+    "verb": "get"
+  },
+  "get_sysLldpNeighbor": {
+    "cmd": "lldp_neighbor",
+    "path": "../cgi/get.cgi?cmd=lldp_neighbor",
+    "verb": "get"
+  },
+  "get_sysLldpNeighborDetail": {
+    "cmd": "lldp_neighborDetail",
+    "path": "../cgi/get.cgi?cmd=lldp_neighborDetail",
+    "verb": "get"
+  },
+  "get_sysLldpPort": {
+    "cmd": "lldp_port",
+    "path": "../cgi/get.cgi?cmd=lldp_port",
+    "verb": "get"
+  },
+  "get_sysLldpProp": {
+    "cmd": "lldp_prop",
+    "path": "../cgi/get.cgi?cmd=lldp_prop",
+    "verb": "get"
+  },
+  "get_sysMgmtAutoDos": {
+    "cmd": "dos_auto",
+    "path": "../cgi/get.cgi?cmd=dos_auto",
+    "verb": "get"
+  },
+  "get_sysMgmtBonjour": {
+    "cmd": "sys_bonjour",
+    "path": "../cgi/get.cgi?cmd=sys_bonjour",
+    "verb": "get"
+  },
+  "get_sysMgmtBonjourDetail": {
+    "cmd": "sys_bonjourDetail",
+    "path": "../cgi/get.cgi?cmd=sys_bonjourDetail",
+    "verb": "get"
+  },
+  "get_sysMgmtDayLight": {
+    "cmd": "time_dls",
+    "path": "../cgi/get.cgi?cmd=time_dls",
+    "verb": "get"
+  },
+  "get_sysMgmtDns": {
+    "cmd": "sys_dnsConf",
+    "path": "../cgi/get.cgi?cmd=sys_dnsConf",
+    "verb": "get"
+  },
+  "get_sysMgmtDosConf": {
+    "cmd": "dos_cfg",
+    "path": "../cgi/get.cgi?cmd=dos_cfg",
+    "verb": "get"
+  },
+  "get_sysMgmtGreen": {
+    "cmd": "sys_greenProp",
+    "path": "../cgi/get.cgi?cmd=sys_greenProp",
+    "verb": "get"
+  },
+  "get_sysMgmtGreenIntf": {
+    "cmd": "sys_greenIntf",
+    "path": "../cgi/get.cgi?cmd=sys_greenIntf",
+    "verb": "get"
+  },
+  "get_sysMgmtHost": {
+    "cmd": "sys_hostConf",
+    "path": "../cgi/get.cgi?cmd=sys_hostConf",
+    "verb": "get"
+  },
+  "get_sysMgmtInfo": {
+    "cmd": "sys_info",
+    "path": "../cgi/get.cgi?cmd=sys_info",
+    "verb": "get"
+  },
+  "get_sysMgmtIp": {
+    "cmd": "sys_ip",
+    "path": "../cgi/get.cgi?cmd=sys_ip",
+    "verb": "get"
+  },
+  "get_sysMgmtIpv6": {
+    "cmd": "sys_ipv6",
+    "path": "../cgi/get.cgi?cmd=sys_ipv6",
+    "verb": "get"
+  },
+  "get_sysMgmtIpv6Neighbor": {
+    "cmd": "sys_ipv6Neighbor",
+    "path": "../cgi/get.cgi?cmd=sys_ipv6Neighbor",
+    "verb": "get"
+  },
+  "get_sysMgmtLedCtrl": {
+    "cmd": "sys_ledCtrl",
+    "path": "../cgi/get.cgi?cmd=sys_ledCtrl",
+    "verb": "get"
+  },
+  "get_sysMgmtSntp": {
+    "cmd": "time_sntp",
+    "path": "../cgi/get.cgi?cmd=time_sntp",
+    "verb": "get"
+  },
+  "get_sysMgmtTime": {
+    "cmd": "time_time",
+    "path": "../cgi/get.cgi?cmd=time_time",
+    "verb": "get"
+  },
+  "get_sysMgmtUSB": {
+    "cmd": "sys_usb",
+    "path": "../cgi/get.cgi?cmd=sys_usb",
+    "verb": "get"
+  },
+  "get_sysMgmtcpuStatus": {
+    "cmd": "sys_cpu_status",
+    "path": "../cgi/get.cgi?cmd=sys_cpu_status",
+    "verb": "get"
+  },
+  "get_sysMgmtcpuThreshold": {
+    "cmd": "sys_cpu_threshold",
+    "path": "../cgi/get.cgi?cmd=sys_cpu_threshold",
+    "verb": "get"
+  },
+  "get_sysPoEConf": {
+    "cmd": "poe_conf",
+    "path": "../cgi/get.cgi?cmd=poe_conf",
+    "verb": "get"
+  },
+  "get_sysPoEPort": {
+    "cmd": "poe_port",
+    "path": "../cgi/get.cgi?cmd=poe_port",
+    "verb": "get"
+  },
+  "get_sysSccd": {
+    "cmd": "sys_sccd",
+    "path": "../cgi/get.cgi?cmd=sys_sccd",
+    "verb": "get"
+  },
+  "get_sysServDai": {
+    "cmd": "dai_conf",
+    "path": "../cgi/get.cgi?cmd=dai_conf",
+    "verb": "get"
+  },
+  "get_sysServDaiAce": {
+    "cmd": "dai_ace",
+    "path": "../cgi/get.cgi?cmd=dai_ace",
+    "verb": "get"
+  },
+  "get_sysServDaiAcl": {
+    "cmd": "dai_acl",
+    "path": "../cgi/get.cgi?cmd=dai_acl",
+    "verb": "get"
+  },
+  "get_sysServDaiIntf": {
+    "cmd": "dai_intf",
+    "path": "../cgi/get.cgi?cmd=dai_intf",
+    "verb": "get"
+  },
+  "get_sysServDaiStatistic": {
+    "cmd": "dai_statistic",
+    "path": "../cgi/get.cgi?cmd=dai_statistic",
+    "verb": "get"
+  },
+  "get_sysServDaiVlan": {
+    "cmd": "dai_vlan",
+    "path": "../cgi/get.cgi?cmd=dai_vlan",
+    "verb": "get"
+  },
+  "get_sysServDlr": {
+    "cmd": "ds_dlr",
+    "path": "../cgi/get.cgi?cmd=ds_dlr",
+    "verb": "get"
+  },
+  "get_sysServDlrIntf": {
+    "cmd": "ds_dlrIntf",
+    "path": "../cgi/get.cgi?cmd=ds_dlrIntf",
+    "verb": "get"
+  },
+  "get_sysServDlrStatistic": {
+    "cmd": "ds_dlrStat",
+    "path": "../cgi/get.cgi?cmd=ds_dlrStat",
+    "verb": "get"
+  },
+  "get_sysServDs": {
+    "cmd": "ds_conf",
+    "path": "../cgi/get.cgi?cmd=ds_conf",
+    "verb": "get"
+  },
+  "get_sysServDsBind": {
+    "cmd": "ds_bind",
+    "path": "../cgi/get.cgi?cmd=ds_bind",
+    "verb": "get"
+  },
+  "get_sysServDsIntf": {
+    "cmd": "ds_intf",
+    "path": "../cgi/get.cgi?cmd=ds_intf",
+    "verb": "get"
+  },
+  "get_sysServDsPersist": {
+    "cmd": "ds_db",
+    "path": "../cgi/get.cgi?cmd=ds_db",
+    "verb": "get"
+  },
+  "get_sysServDsStatistic": {
+    "cmd": "ds_statistic",
+    "path": "../cgi/get.cgi?cmd=ds_statistic",
+    "verb": "get"
+  },
+  "get_sysSnmpCommunity": {
+    "cmd": "snmp_community",
+    "path": "../cgi/get.cgi?cmd=snmp_community",
+    "verb": "get"
+  },
+  "get_sysSnmpSupportMIB": {
+    "cmd": "snmp_supportMIB",
+    "path": "../cgi/get.cgi?cmd=snmp_supportMIB",
+    "verb": "get"
+  },
+  "get_sysSnmpTrapConfg": {
+    "cmd": "snmp_trapConfg",
+    "path": "../cgi/get.cgi?cmd=snmp_trapConfg",
+    "verb": "get"
+  },
+  "get_sysSnmpTrapFlag": {
+    "cmd": "snmp_trapFlag",
+    "path": "../cgi/get.cgi?cmd=snmp_trapFlag",
+    "verb": "get"
+  },
+  "get_sysSnmpUser": {
+    "cmd": "snmp_user",
+    "path": "../cgi/get.cgi?cmd=snmp_user",
+    "verb": "get"
+  },
+  "get_sysTsConf": {
+    "cmd": "time_ts_conf",
+    "path": "../cgi/get.cgi?cmd=time_ts_conf",
+    "verb": "get"
+  },
+  "get_sysTsGlobal": {
+    "cmd": "time_ts_global",
+    "path": "../cgi/get.cgi?cmd=time_ts_global",
+    "verb": "get"
+  },
+  "set_cgiDbgDel": {
+    "cmd": "home_debugDel",
+    "path": "../cgi/set.cgi?cmd=home_debugDel",
+    "verb": "set"
+  },
+  "set_helpRegister": {
+    "cmd": "sys_registration",
+    "path": "../cgi/set.cgi?cmd=sys_registration",
+    "verb": "set"
+  },
+  "set_hidePopupMsg": {
+    "cmd": "home_hidePopup",
+    "path": "../cgi/set.cgi?cmd=home_hidePopup",
+    "verb": "set"
+  },
+  "set_lang": {
+    "cmd": "home_lang",
+    "path": "cgi/set.cgi?cmd=home_lang",
+    "verb": "set"
+  },
+  "set_loginAuth": {
+    "cmd": "home_loginAuth",
+    "path": "cgi/set.cgi?cmd=home_loginAuth",
+    "verb": "set"
+  },
+  "set_logout": {
+    "cmd": "home_logout",
+    "path": "cgi/set.cgi?cmd=home_logout",
+    "verb": "set"
+  },
+  "set_maintainActivationKey": {
+    "cmd": "sys_activationKey",
+    "path": "../cgi/set.cgi?cmd=sys_activationKey",
+    "verb": "set"
+  },
+  "set_maintainDownloadHttp": {
+    "cmd": "file_http_download",
+    "path": "../cgi/set.cgi?cmd=file_http_download",
+    "verb": "set"
+  },
+  "set_maintainDownloadTftp": {
+    "cmd": "file_tftp_download",
+    "path": "../cgi/set.cgi?cmd=file_tftp_download",
+    "verb": "set"
+  },
+  "set_maintainDownloadUSB": {
+    "cmd": "file_usb_download",
+    "path": "../cgi/set.cgi?cmd=file_usb_download",
+    "verb": "set"
+  },
+  "set_maintainExportHttp": {
+    "cmd": "file_http_export",
+    "path": "../cgi/set.cgi?cmd=file_http_export",
+    "verb": "set"
+  },
+  "set_maintainExportTftp": {
+    "cmd": "file_tftp_export",
+    "path": "../cgi/set.cgi?cmd=file_tftp_export",
+    "verb": "set"
+  },
+  "set_maintainExportUSB": {
+    "cmd": "file_usb_export",
+    "path": "../cgi/set.cgi?cmd=file_usb_export",
+    "verb": "set"
+  },
+  "set_maintainFileCopy": {
+    "cmd": "file_copy",
+    "path": "../cgi/set.cgi?cmd=file_copy",
+    "verb": "set"
+  },
+  "set_maintainFileDualConf": {
+    "cmd": "file_dualConf",
+    "path": "../cgi/set.cgi?cmd=file_dualConf",
+    "verb": "set"
+  },
+  "set_maintainFileDualStatus": {
+    "cmd": "file_dualStatus",
+    "path": "../cgi/set.cgi?cmd=file_dualStatus",
+    "verb": "set"
+  },
+  "set_maintainResetFactoryDft": {
+    "cmd": "sys_restore",
+    "path": "../cgi/set.cgi?cmd=sys_restore",
+    "verb": "set"
+  },
+  "set_maintainResetReboot": {
+    "cmd": "sys_reboot",
+    "path": "../cgi/set.cgi?cmd=sys_reboot",
+    "verb": "set"
+  },
+  "set_maintainTroubleDiag": {
+    "cmd": "diag_remote",
+    "path": "../cgi/set.cgi?cmd=diag_remote",
+    "verb": "set"
+  },
+  "set_maintainTroubleMemory": {
+    "cmd": "diag_memory",
+    "path": "../cgi/set.cgi?cmd=diag_memory",
+    "verb": "set"
+  },
+  "set_maintainTroublePingIpv4": {
+    "cmd": "diag_ping",
+    "path": "../cgi/set.cgi?cmd=diag_ping",
+    "verb": "set"
+  },
+  "set_maintainTroublePingIpv6": {
+    "cmd": "diag_ping",
+    "path": "../cgi/set.cgi?cmd=diag_ping",
+    "verb": "set"
+  },
+  "set_maintainTroubleReverse": {
+    "cmd": "diag_reverse",
+    "path": "../cgi/set.cgi?cmd=diag_reverse",
+    "verb": "set"
+  },
+  "set_maintainTroubleTracerouteIpv4": {
+    "cmd": "diag_traceroute",
+    "path": "../cgi/set.cgi?cmd=diag_traceroute",
+    "verb": "set"
+  },
+  "set_maintainTroubleTracerouteIpv6": {
+    "cmd": "diag_traceroute",
+    "path": "../cgi/set.cgi?cmd=diag_traceroute",
+    "verb": "set"
+  },
+  "set_monitorLogEvent": {
+    "cmd": "log_event",
+    "path": "../cgi/set.cgi?cmd=log_event",
+    "verb": "set"
+  },
+  "set_monitorLogEventClear": {
+    "cmd": "log_eventClear",
+    "path": "../cgi/set.cgi?cmd=log_eventClear",
+    "verb": "set"
+  },
+  "set_monitorLogFlash": {
+    "cmd": "log_flash",
+    "path": "../cgi/set.cgi?cmd=log_flash",
+    "verb": "set"
+  },
+  "set_monitorLogRam": {
+    "cmd": "log_ram",
+    "path": "../cgi/set.cgi?cmd=log_ram",
+    "verb": "set"
+  },
+  "set_monitorLogRamClear": {
+    "cmd": "log_ramClear",
+    "path": "../cgi/set.cgi?cmd=log_ramClear",
+    "verb": "set"
+  },
+  "set_monitorLogServer": {
+    "cmd": "log_remote",
+    "path": "../cgi/set.cgi?cmd=log_remote",
+    "verb": "set"
+  },
+  "set_monitorLogServerAdd": {
+    "cmd": "log_remoteAdd",
+    "path": "../cgi/set.cgi?cmd=log_remoteAdd",
+    "verb": "set"
+  },
+  "set_monitorLogServerDel": {
+    "cmd": "log_remoteDel",
+    "path": "../cgi/set.cgi?cmd=log_remoteDel",
+    "verb": "set"
+  },
+  "set_monitorLogTrap": {
+    "cmd": "log_trap",
+    "path": "../cgi/set.cgi?cmd=log_trap",
+    "verb": "set"
+  },
+  "set_monitorLogTrapClear": {
+    "cmd": "log_trapClear",
+    "path": "../cgi/set.cgi?cmd=log_trapClear",
+    "verb": "set"
+  },
+  "set_monitorPortMirror": {
+    "cmd": "mirror_port",
+    "path": "../cgi/set.cgi?cmd=mirror_port",
+    "verb": "set"
+  },
+  "set_monitorPortsCableTest": {
+    "cmd": "diag_copper",
+    "path": "../cgi/set.cgi?cmd=diag_copper",
+    "verb": "set"
+  },
+  "set_monitorPortsEapStatisClear": {
+    "cmd": "dot1x_portEapStsClr",
+    "path": "../cgi/set.cgi?cmd=dot1x_portEapStsClr",
+    "verb": "set"
+  },
+  "set_monitorPortsEapStatisUpdate": {
+    "cmd": "dot1x_portEapSts",
+    "path": "../cgi/get.cgi?cmd=dot1x_portEapSts",
+    "verb": "get"
+  },
+  "set_monitorPortsPortDetailStatisticsClear": {
+    "cmd": "port_portDetailStatisticsClear",
+    "path": "../cgi/set.cgi?cmd=port_portDetailStatisticsClear",
+    "verb": "set"
+  },
+  "set_monitorPortsPortStatisticsClear": {
+    "cmd": "port_portStatisticsClear",
+    "path": "../cgi/set.cgi?cmd=port_portStatisticsClear",
+    "verb": "set"
+  },
+  "set_monitorPortsSwStatisticsClear": {
+    "cmd": "port_swStatisticsClear",
+    "path": "../cgi/set.cgi?cmd=port_swStatisticsClear",
+    "verb": "set"
+  },
+  "set_qosCos1p2Queue": {
+    "cmd": "qos_1p2Que",
+    "path": "../cgi/set.cgi?cmd=qos_1p2Que",
+    "verb": "set"
+  },
+  "set_qosCosCos": {
+    "cmd": "qos_cos",
+    "path": "../cgi/set.cgi?cmd=qos_cos",
+    "verb": "set"
+  },
+  "set_qosCosDscp2Queue": {
+    "cmd": "qos_dscp2Que",
+    "path": "../cgi/set.cgi?cmd=qos_dscp2Que",
+    "verb": "set"
+  },
+  "set_qosCosIntf": {
+    "cmd": "qos_cosIntf",
+    "path": "../cgi/set.cgi?cmd=qos_cosIntf",
+    "verb": "set"
+  },
+  "set_qosCosIntfQueue": {
+    "cmd": "qos_cosIntfQue",
+    "path": "../cgi/set.cgi?cmd=qos_cosIntfQue",
+    "verb": "set"
+  },
+  "set_qosDiffClass": {
+    "cmd": "qos_class",
+    "path": "../cgi/set.cgi?cmd=qos_class",
+    "verb": "set"
+  },
+  "set_qosDiffClassAdd": {
+    "cmd": "qos_classAdd",
+    "path": "../cgi/set.cgi?cmd=qos_classAdd",
+    "verb": "set"
+  },
+  "set_qosDiffClassConf": {
+    "cmd": "qos_classConf",
+    "path": "../cgi/set.cgi?cmd=qos_classConf",
+    "verb": "set"
+  },
+  "set_qosDiffClassDel": {
+    "cmd": "qos_classDel",
+    "path": "../cgi/set.cgi?cmd=qos_classDel",
+    "verb": "set"
+  },
+  "set_qosDiffClassIpv6": {
+    "cmd": "qos_classIpv6",
+    "path": "../cgi/set.cgi?cmd=qos_classIpv6",
+    "verb": "set"
+  },
+  "set_qosDiffClassIpv6Add": {
+    "cmd": "qos_classIpv6Add",
+    "path": "../cgi/set.cgi?cmd=qos_classIpv6Add",
+    "verb": "set"
+  },
+  "set_qosDiffClassIpv6Conf": {
+    "cmd": "qos_classIpv6Conf",
+    "path": "../cgi/set.cgi?cmd=qos_classIpv6Conf",
+    "verb": "set"
+  },
+  "set_qosDiffClassIpv6Del": {
+    "cmd": "qos_classIpv6Del",
+    "path": "../cgi/set.cgi?cmd=qos_classIpv6Del",
+    "verb": "set"
+  },
+  "set_qosDiffConf": {
+    "cmd": "qos_diff",
+    "path": "../cgi/set.cgi?cmd=qos_diff",
+    "verb": "set"
+  },
+  "set_qosDiffPolicy": {
+    "cmd": "qos_policy",
+    "path": "../cgi/set.cgi?cmd=qos_policy",
+    "verb": "set"
+  },
+  "set_qosDiffPolicyAdd": {
+    "cmd": "qos_policyAdd",
+    "path": "../cgi/set.cgi?cmd=qos_policyAdd",
+    "verb": "set"
+  },
+  "set_qosDiffPolicyConf": {
+    "cmd": "qos_policyConf",
+    "path": "../cgi/set.cgi?cmd=qos_policyConf",
+    "verb": "set"
+  },
+  "set_qosDiffPolicyDel": {
+    "cmd": "qos_policyDel",
+    "path": "../cgi/set.cgi?cmd=qos_policyDel",
+    "verb": "set"
+  },
+  "set_qosDiffService": {
+    "cmd": "qos_bind",
+    "path": "../cgi/set.cgi?cmd=qos_bind",
+    "verb": "set"
+  },
+  "set_routeArpCache": {
+    "cmd": "route_arpCache",
+    "path": "../cgi/set.cgi?cmd=route_arpCache",
+    "verb": "set"
+  },
+  "set_routeArpConf": {
+    "cmd": "route_arpConf",
+    "path": "../cgi/set.cgi?cmd=route_arpConf",
+    "verb": "set"
+  },
+  "set_routeArpCreate": {
+    "cmd": "route_arpCreate",
+    "path": "../cgi/set.cgi?cmd=route_arpCreate",
+    "verb": "set"
+  },
+  "set_routeArpCreateAdd": {
+    "cmd": "route_arpCreateAdd",
+    "path": "../cgi/set.cgi?cmd=route_arpCreateAdd",
+    "verb": "set"
+  },
+  "set_routeArpCreateDel": {
+    "cmd": "route_arpCreateDel",
+    "path": "../cgi/set.cgi?cmd=route_arpCreateDel",
+    "verb": "set"
+  },
+  "set_routeArpMgmt": {
+    "cmd": "route_arpMgmt",
+    "path": "../cgi/set.cgi?cmd=route_arpMgmt",
+    "verb": "set"
+  },
+  "set_routeDiscov": {
+    "cmd": "route_discov",
+    "path": "../cgi/set.cgi?cmd=route_discov",
+    "verb": "set"
+  },
+  "set_routeIPConf": {
+    "cmd": "route_ipConf",
+    "path": "../cgi/set.cgi?cmd=route_ipConf",
+    "verb": "set"
+  },
+  "set_routeIPv6Conf": {
+    "cmd": "route_ipv6Conf",
+    "path": "../cgi/set.cgi?cmd=route_ipv6Conf",
+    "verb": "set"
+  },
+  "set_routeIPv6NeighClear": {
+    "cmd": "route_ipv6NeighborClear",
+    "path": "../cgi/set.cgi?cmd=route_ipv6NeighborClear",
+    "verb": "set"
+  },
+  "set_routeIPv6Prefer": {
+    "cmd": "route_ipv6Prefer",
+    "path": "../cgi/set.cgi?cmd=route_ipv6Prefer",
+    "verb": "set"
+  },
+  "set_routeIPv6Prefix": {
+    "cmd": "route_ipv6Prefix",
+    "path": "../cgi/set.cgi?cmd=route_ipv6Prefix",
+    "verb": "set"
+  },
+  "set_routeIPv6PrefixAdd": {
+    "cmd": "route_ipv6PrefixAdd",
+    "path": "../cgi/set.cgi?cmd=route_ipv6PrefixAdd",
+    "verb": "set"
+  },
+  "set_routeIPv6PrefixDel": {
+    "cmd": "route_ipv6PrefixDel",
+    "path": "../cgi/set.cgi?cmd=route_ipv6PrefixDel",
+    "verb": "set"
+  },
+  "set_routeIPv6Static": {
+    "cmd": "route_ipv6Static",
+    "path": "../cgi/set.cgi?cmd=route_ipv6Static",
+    "verb": "set"
+  },
+  "set_routeIPv6StaticAdd": {
+    "cmd": "route_ipv6StaticAdd",
+    "path": "../cgi/set.cgi?cmd=route_ipv6StaticAdd",
+    "verb": "set"
+  },
+  "set_routeIPv6StaticDel": {
+    "cmd": "route_ipv6StaticDel",
+    "path": "../cgi/set.cgi?cmd=route_ipv6StaticDel",
+    "verb": "set"
+  },
+  "set_routeIPv6Vlan": {
+    "cmd": "route_ipv6Vlan",
+    "path": "../cgi/set.cgi?cmd=route_ipv6Vlan",
+    "verb": "set"
+  },
+  "set_routeTbl": {
+    "cmd": "route_tbl",
+    "path": "../cgi/set.cgi?cmd=route_tbl",
+    "verb": "set"
+  },
+  "set_routeTblAdd": {
+    "cmd": "route_tblAdd",
+    "path": "../cgi/set.cgi?cmd=route_tblAdd",
+    "verb": "set"
+  },
+  "set_routeTblDel": {
+    "cmd": "route_tblDel",
+    "path": "../cgi/set.cgi?cmd=route_tblDel",
+    "verb": "set"
+  },
+  "set_routeVlanConf": {
+    "cmd": "route_vlanConf",
+    "path": "../cgi/set.cgi?cmd=route_vlanConf",
+    "verb": "set"
+  },
+  "set_routeVlanConfAdd": {
+    "cmd": "route_vlanConfAdd",
+    "path": "../cgi/set.cgi?cmd=route_vlanConfAdd",
+    "verb": "set"
+  },
+  "set_routeVlanConfDel": {
+    "cmd": "route_vlanConfDel",
+    "path": "../cgi/set.cgi?cmd=route_vlanConfDel",
+    "verb": "set"
+  },
+  "set_routeVlanWizard": {
+    "cmd": "route_vlanWizard",
+    "path": "../cgi/set.cgi?cmd=route_vlanWizard",
+    "verb": "set"
+  },
+  "set_save": {
+    "cmd": "home_save",
+    "path": "cgi/set.cgi?cmd=home_save",
+    "verb": "set"
+  },
+  "set_secACLWizard": {
+    "cmd": "acl_wizard",
+    "path": "../cgi/set.cgi?cmd=acl_wizard",
+    "verb": "set"
+  },
+  "set_secACLWizardAdd": {
+    "cmd": "acl_wizardAdd",
+    "path": "../cgi/set.cgi?cmd=acl_wizardAdd",
+    "verb": "set"
+  },
+  "set_secACLWizardDel": {
+    "cmd": "acl_wizardDel",
+    "path": "../cgi/set.cgi?cmd=acl_wizardDel",
+    "verb": "set"
+  },
+  "set_secAccessCtrl": {
+    "cmd": "aclMgmt_profile",
+    "path": "../cgi/set.cgi?cmd=aclMgmt_profile",
+    "verb": "set"
+  },
+  "set_secAccessCtrlRule": {
+    "cmd": "aclMgmt_rule",
+    "path": "../cgi/set.cgi?cmd=aclMgmt_rule",
+    "verb": "set"
+  },
+  "set_secAccessCtrlRuleAdd": {
+    "cmd": "aclMgmt_ruleAdd",
+    "path": "../cgi/set.cgi?cmd=aclMgmt_ruleAdd",
+    "verb": "set"
+  },
+  "set_secAccessCtrlRuleDel": {
+    "cmd": "aclMgmt_ruleDel",
+    "path": "../cgi/set.cgi?cmd=aclMgmt_ruleDel",
+    "verb": "set"
+  },
+  "set_secAccessHttp": {
+    "cmd": "access_http",
+    "path": "../cgi/set.cgi?cmd=access_http",
+    "verb": "set"
+  },
+  "set_secAccessHttps": {
+    "cmd": "access_https",
+    "path": "../cgi/set.cgi?cmd=access_https",
+    "verb": "set"
+  },
+  "set_secAccessHttpsCert": {
+    "cmd": "access_httpsCert",
+    "path": "../cgi/set.cgi?cmd=access_httpsCert",
+    "verb": "set"
+  },
+  "set_secAccessHttpsCertDl": {
+    "cmd": "access_httpsCertDl",
+    "path": "../cgi/set.cgi?cmd=access_httpsCertDl",
+    "verb": "set"
+  },
+  "set_secAccessSSH": {
+    "cmd": "access_ssh",
+    "path": "../cgi/set.cgi?cmd=access_ssh",
+    "verb": "set"
+  },
+  "set_secAccessSSHKeyDl": {
+    "cmd": "access_sshKeyDl",
+    "path": "../cgi/set.cgi?cmd=access_sshKeyDl",
+    "verb": "set"
+  },
+  "set_secAccessSSHKeyMgmt": {
+    "cmd": "access_sshKeyMgmt",
+    "path": "../cgi/set.cgi?cmd=access_sshKeyMgmt",
+    "verb": "set"
+  },
+  "set_secAuthDot1x": {
+    "cmd": "dot1x_glb",
+    "path": "../cgi/set.cgi?cmd=dot1x_glb",
+    "verb": "set"
+  },
+  "set_secAuthDot1xPort": {
+    "cmd": "dot1x_port",
+    "path": "../cgi/set.cgi?cmd=dot1x_port",
+    "verb": "set"
+  },
+  "set_secAuthDot1xPortInit": {
+    "cmd": "dot1x_portInit",
+    "path": "../cgi/set.cgi?cmd=dot1x_portInit",
+    "verb": "set"
+  },
+  "set_secAuthDot1xPortReauth": {
+    "cmd": "dot1x_portReauth",
+    "path": "../cgi/set.cgi?cmd=dot1x_portReauth",
+    "verb": "set"
+  },
+  "set_secIPACEAdd": {
+    "cmd": "acl_ipAceAdd",
+    "path": "../cgi/set.cgi?cmd=acl_ipAceAdd",
+    "verb": "set"
+  },
+  "set_secIPACEDel": {
+    "cmd": "acl_ipAceDel",
+    "path": "../cgi/set.cgi?cmd=acl_ipAceDel",
+    "verb": "set"
+  },
+  "set_secIPACEExtAdd": {
+    "cmd": "acl_ipExtAceAdd",
+    "path": "../cgi/set.cgi?cmd=acl_ipExtAceAdd",
+    "verb": "set"
+  },
+  "set_secIPACEExtDel": {
+    "cmd": "acl_ipExtAceDel",
+    "path": "../cgi/set.cgi?cmd=acl_ipExtAceDel",
+    "verb": "set"
+  },
+  "set_secIPACL": {
+    "cmd": "acl_ipAcl",
+    "path": "../cgi/set.cgi?cmd=acl_ipAcl",
+    "verb": "set"
+  },
+  "set_secIPACLAdd": {
+    "cmd": "acl_ipAclAdd",
+    "path": "../cgi/set.cgi?cmd=acl_ipAclAdd",
+    "verb": "set"
+  },
+  "set_secIPACLDel": {
+    "cmd": "acl_ipAclDel",
+    "path": "../cgi/set.cgi?cmd=acl_ipAclDel",
+    "verb": "set"
+  },
+  "set_secIPBind": {
+    "cmd": "acl_portBind",
+    "path": "../cgi/set.cgi?cmd=acl_portBind",
+    "verb": "set"
+  },
+  "set_secIPBindTbl": {
+    "cmd": "acl_portBindTbl",
+    "path": "../cgi/set.cgi?cmd=acl_portBindTbl",
+    "verb": "set"
+  },
+  "set_secIPv6ACEAdd": {
+    "cmd": "acl_ipv6AceAdd",
+    "path": "../cgi/set.cgi?cmd=acl_ipv6AceAdd",
+    "verb": "set"
+  },
+  "set_secIPv6ACEDel": {
+    "cmd": "acl_ipv6AceDel",
+    "path": "../cgi/set.cgi?cmd=acl_ipv6AceDel",
+    "verb": "set"
+  },
+  "set_secIPv6ACL": {
+    "cmd": "acl_ipv6Acl",
+    "path": "../cgi/set.cgi?cmd=acl_ipv6Acl",
+    "verb": "set"
+  },
+  "set_secIPv6ACLAdd": {
+    "cmd": "acl_ipv6AclAdd",
+    "path": "../cgi/set.cgi?cmd=acl_ipv6AclAdd",
+    "verb": "set"
+  },
+  "set_secIPv6ACLDel": {
+    "cmd": "acl_ipv6AclDel",
+    "path": "../cgi/set.cgi?cmd=acl_ipv6AclDel",
+    "verb": "set"
+  },
+  "set_secMACACE": {
+    "cmd": "acl_macAce",
+    "path": "../cgi/set.cgi?cmd=acl_macAce",
+    "verb": "set"
+  },
+  "set_secMACACEAdd": {
+    "cmd": "acl_macAceAdd",
+    "path": "../cgi/set.cgi?cmd=acl_macAceAdd",
+    "verb": "set"
+  },
+  "set_secMACACEDel": {
+    "cmd": "acl_macAceDel",
+    "path": "../cgi/set.cgi?cmd=acl_macAceDel",
+    "verb": "set"
+  },
+  "set_secMACACL": {
+    "cmd": "acl_macAcl",
+    "path": "../cgi/set.cgi?cmd=acl_macAcl",
+    "verb": "set"
+  },
+  "set_secMACACLAdd": {
+    "cmd": "acl_macAclAdd",
+    "path": "../cgi/set.cgi?cmd=acl_macAclAdd",
+    "verb": "set"
+  },
+  "set_secMACACLDel": {
+    "cmd": "acl_macAclDel",
+    "path": "../cgi/set.cgi?cmd=acl_macAclDel",
+    "verb": "set"
+  },
+  "set_secMACBind": {
+    "cmd": "acl_portBind",
+    "path": "../cgi/set.cgi?cmd=acl_portBind",
+    "verb": "set"
+  },
+  "set_secMACBindTbl": {
+    "cmd": "acl_portBindTbl",
+    "path": "../cgi/set.cgi?cmd=acl_portBindTbl",
+    "verb": "set"
+  },
+  "set_secMgmtAuthDot1x": {
+    "cmd": "aaa_authDot1x",
+    "path": "../cgi/set.cgi?cmd=aaa_authDot1x",
+    "verb": "set"
+  },
+  "set_secMgmtAuthHttp": {
+    "cmd": "aaa_authHttp",
+    "path": "../cgi/set.cgi?cmd=aaa_authHttp",
+    "verb": "set"
+  },
+  "set_secMgmtAuthHttps": {
+    "cmd": "aaa_authHttps",
+    "path": "../cgi/set.cgi?cmd=aaa_authHttps",
+    "verb": "set"
+  },
+  "set_secMgmtRadius": {
+    "cmd": "radius_glb",
+    "path": "../cgi/set.cgi?cmd=radius_glb",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusAcct": {
+    "cmd": "radius_acct",
+    "path": "../cgi/set.cgi?cmd=radius_acct",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusAcctAdd": {
+    "cmd": "radius_acct",
+    "path": "../cgi/set.cgi?cmd=radius_acct",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusAcctClr": {
+    "cmd": "radius_acctClr",
+    "path": "../cgi/set.cgi?cmd=radius_acctClr",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusAcctDel": {
+    "cmd": "radius_acctDel",
+    "path": "../cgi/set.cgi?cmd=radius_acctDel",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusSrv": {
+    "cmd": "radius_srv",
+    "path": "../cgi/set.cgi?cmd=radius_srv",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusSrvAdd": {
+    "cmd": "radius_srvAdd",
+    "path": "../cgi/set.cgi?cmd=radius_srvAdd",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusSrvClr": {
+    "cmd": "radius_srvClr",
+    "path": "../cgi/set.cgi?cmd=radius_srvClr",
+    "verb": "set"
+  },
+  "set_secMgmtRadiusSrvDel": {
+    "cmd": "radius_srvDel",
+    "path": "../cgi/set.cgi?cmd=radius_srvDel",
+    "verb": "set"
+  },
+  "set_secMgmtSccCtrl": {
+    "cmd": "sys_sccd",
+    "path": "../cgi/set.cgi?cmd=sys_sccd",
+    "verb": "set"
+  },
+  "set_secMgmtTacacs": {
+    "cmd": "tac_glb",
+    "path": "../cgi/set.cgi?cmd=tac_glb",
+    "verb": "set"
+  },
+  "set_secMgmtTacacsSrv": {
+    "cmd": "tac_srv",
+    "path": "../cgi/set.cgi?cmd=tac_srv",
+    "verb": "set"
+  },
+  "set_secMgmtTacacsSrvAdd": {
+    "cmd": "tac_srvAdd",
+    "path": "../cgi/set.cgi?cmd=tac_srvAdd",
+    "verb": "set"
+  },
+  "set_secMgmtTacacsSrvDel": {
+    "cmd": "tac_srvDel",
+    "path": "../cgi/set.cgi?cmd=tac_srvDel",
+    "verb": "set"
+  },
+  "set_secMgmtUser": {
+    "cmd": "sys_pwd",
+    "path": "../cgi/set.cgi?cmd=sys_pwd",
+    "verb": "set"
+  },
+  "set_secTcFilter": {
+    "cmd": "filter_entry",
+    "path": "../cgi/set.cgi?cmd=filter_entry",
+    "verb": "set"
+  },
+  "set_secTcFilterDel": {
+    "cmd": "filter_entryDel",
+    "path": "../cgi/set.cgi?cmd=filter_entryDel",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanAssociation": {
+    "cmd": "vlan_privateAssociation",
+    "path": "../cgi/set.cgi?cmd=vlan_privateAssociation",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanAssociationDel": {
+    "cmd": "vlan_privateAssociationDel",
+    "path": "../cgi/set.cgi?cmd=vlan_privateAssociationDel",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanHost": {
+    "cmd": "vlan_privateHost",
+    "path": "../cgi/set.cgi?cmd=vlan_privateHost",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanHostDel": {
+    "cmd": "vlan_privateHostDel",
+    "path": "../cgi/set.cgi?cmd=vlan_privateHostDel",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanPortMode": {
+    "cmd": "vlan_privatePortMode",
+    "path": "../cgi/set.cgi?cmd=vlan_privatePortMode",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanPromiscuous": {
+    "cmd": "vlan_privatePromiscuous",
+    "path": "../cgi/set.cgi?cmd=vlan_privatePromiscuous",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanPromiscuousDel": {
+    "cmd": "vlan_privatePromiscuousDel",
+    "path": "../cgi/set.cgi?cmd=vlan_privatePromiscuousDel",
+    "verb": "set"
+  },
+  "set_secTcPrivateVlanType": {
+    "cmd": "vlan_privateType",
+    "path": "../cgi/set.cgi?cmd=vlan_privateType",
+    "verb": "set"
+  },
+  "set_secTcProtect": {
+    "cmd": "port_protect",
+    "path": "../cgi/set.cgi?cmd=port_protect",
+    "verb": "set"
+  },
+  "set_secTcPsecure": {
+    "cmd": "psecure_glb",
+    "path": "../cgi/set.cgi?cmd=psecure_glb",
+    "verb": "set"
+  },
+  "set_secTcPsecureIntf": {
+    "cmd": "psecure_intf",
+    "path": "../cgi/set.cgi?cmd=psecure_intf",
+    "verb": "set"
+  },
+  "set_secTcPsecureMac": {
+    "cmd": "psecure_mac",
+    "path": "../cgi/set.cgi?cmd=psecure_mac",
+    "verb": "set"
+  },
+  "set_secTcStorm": {
+    "cmd": "storm_cfg",
+    "path": "../cgi/set.cgi?cmd=storm_cfg",
+    "verb": "set"
+  },
+  "set_secVlanBindTblAdd": {
+    "cmd": "acl_vlanBindAdd",
+    "path": "../cgi/set.cgi?cmd=acl_vlanBindAdd",
+    "verb": "set"
+  },
+  "set_secVlanBindTblDel": {
+    "cmd": "acl_vlanBindDel",
+    "path": "../cgi/set.cgi?cmd=acl_vlanBindDel",
+    "verb": "set"
+  },
+  "set_switchAutoVlanOUIBaseTableAdd": {
+    "cmd": "vlan_auto_ouiTableAdd",
+    "path": "../cgi/set.cgi?cmd=vlan_auto_ouiTableAdd",
+    "verb": "set"
+  },
+  "set_switchAutoVlanOUIBaseTableDel": {
+    "cmd": "vlan_auto_ouiTableDel",
+    "path": "../cgi/set.cgi?cmd=vlan_auto_ouiTableDel",
+    "verb": "set"
+  },
+  "set_switchAutoVlanOUIBased": {
+    "cmd": "vlan_auto_oui",
+    "path": "../cgi/set.cgi?cmd=vlan_auto_oui",
+    "verb": "set"
+  },
+  "set_switchAutoVlanOUIBasedPort": {
+    "cmd": "vlan_auto_ouiPort",
+    "path": "../cgi/set.cgi?cmd=vlan_auto_ouiPort",
+    "verb": "set"
+  },
+  "set_switchAvOUIBaseTableAdd": {
+    "cmd": "vlan_ouiTableAdd",
+    "path": "../cgi/set.cgi?cmd=vlan_ouiTableAdd",
+    "verb": "set"
+  },
+  "set_switchAvOUIBaseTableDel": {
+    "cmd": "vlan_ouiTableDel",
+    "path": "../cgi/set.cgi?cmd=vlan_ouiTableDel",
+    "verb": "set"
+  },
+  "set_switchAvOUIBased": {
+    "cmd": "vlan_oui",
+    "path": "../cgi/set.cgi?cmd=vlan_oui",
+    "verb": "set"
+  },
+  "set_switchAvOUIBasedPort": {
+    "cmd": "vlan_ouiPort",
+    "path": "../cgi/set.cgi?cmd=vlan_ouiPort",
+    "verb": "set"
+  },
+  "set_switchAvProtocolBasedPort": {
+    "cmd": "vlan_voipPort",
+    "path": "../cgi/set.cgi?cmd=vlan_voipPort",
+    "verb": "set"
+  },
+  "set_switchDVLANConf": {
+    "cmd": "vlan_dvlan",
+    "path": "../cgi/set.cgi?cmd=vlan_dvlan",
+    "verb": "set"
+  },
+  "set_switchLagCfg": {
+    "cmd": "lag_cfg",
+    "path": "../cgi/set.cgi?cmd=lag_cfg",
+    "verb": "set"
+  },
+  "set_switchLagLacpCfgApply": {
+    "cmd": "lag_lacpCfgApply",
+    "path": "../cgi/set.cgi?cmd=lag_lacpCfgApply",
+    "verb": "set"
+  },
+  "set_switchLagLacpCfgUpdate": {
+    "cmd": "lag_lacpCfgUpdate",
+    "path": "../cgi/set.cgi?cmd=lag_lacpCfgUpdate",
+    "verb": "set"
+  },
+  "set_switchLagLacpPortCfg": {
+    "cmd": "lag_lacpPortCfg",
+    "path": "../cgi/set.cgi?cmd=lag_lacpPortCfg",
+    "verb": "set"
+  },
+  "set_switchLagMbr": {
+    "cmd": "lag_mbr",
+    "path": "../cgi/set.cgi?cmd=lag_mbr",
+    "verb": "set"
+  },
+  "set_switchLoopProtection": {
+    "cmd": "loop_protect",
+    "path": "../cgi/set.cgi?cmd=loop_protect",
+    "verb": "set"
+  },
+  "set_switchLoopProtectionClr": {
+    "cmd": "loop_protectClr",
+    "path": "../cgi/set.cgi?cmd=loop_protectClr",
+    "verb": "set"
+  },
+  "set_switchMacAddrTableClear": {
+    "cmd": "mac_tblClr",
+    "path": "../cgi/set.cgi?cmd=mac_tblClr",
+    "verb": "set"
+  },
+  "set_switchMacDynamicAddr": {
+    "cmd": "mac_dyn",
+    "path": "../cgi/set.cgi?cmd=mac_dyn",
+    "verb": "set"
+  },
+  "set_switchMacStaticAddrAdd": {
+    "cmd": "mac_staticAdd",
+    "path": "../cgi/set.cgi?cmd=mac_staticAdd",
+    "verb": "set"
+  },
+  "set_switchMacStaticAddrApply": {
+    "cmd": "mac_static",
+    "path": "../cgi/set.cgi?cmd=mac_static",
+    "verb": "set"
+  },
+  "set_switchMacStaticAddrDel": {
+    "cmd": "mac_staticDel",
+    "path": "../cgi/set.cgi?cmd=mac_staticDel",
+    "verb": "set"
+  },
+  "set_switchMcastAv": {
+    "cmd": "mcast_av",
+    "path": "../cgi/set.cgi?cmd=mcast_av",
+    "verb": "set"
+  },
+  "set_switchMcastFwdAll": {
+    "cmd": "mcast_fwdAll",
+    "path": "../cgi/set.cgi?cmd=mcast_fwdAll",
+    "verb": "set"
+  },
+  "set_switchMcastGroup": {
+    "cmd": "mcast_group",
+    "path": "../cgi/set.cgi?cmd=mcast_group",
+    "verb": "set"
+  },
+  "set_switchMcastGroupAdd": {
+    "cmd": "mcast_groupAdd",
+    "path": "../cgi/set.cgi?cmd=mcast_groupAdd",
+    "verb": "set"
+  },
+  "set_switchMcastGroupDel": {
+    "cmd": "mcast_groupDel",
+    "path": "../cgi/set.cgi?cmd=mcast_groupDel",
+    "verb": "set"
+  },
+  "set_switchMcastGroupMbr": {
+    "cmd": "mcast_groupMbr",
+    "path": "../cgi/set.cgi?cmd=mcast_groupMbr",
+    "verb": "set"
+  },
+  "set_switchMcastIgsGlobal": {
+    "cmd": "mcast_igsGlobal",
+    "path": "../cgi/set.cgi?cmd=mcast_igsGlobal",
+    "verb": "set"
+  },
+  "set_switchMcastIgsIntf": {
+    "cmd": "mcast_igsIntf",
+    "path": "../cgi/set.cgi?cmd=mcast_igsIntf",
+    "verb": "set"
+  },
+  "set_switchMcastIgsQry": {
+    "cmd": "mcast_igsQry",
+    "path": "../cgi/set.cgi?cmd=mcast_igsQry",
+    "verb": "set"
+  },
+  "set_switchMcastIgsQryStat": {
+    "cmd": "mcast_igsQryStat",
+    "path": "../cgi/set.cgi?cmd=mcast_igsQryStat",
+    "verb": "set"
+  },
+  "set_switchMcastIgsQryVlan": {
+    "cmd": "mcast_igsQryVlan",
+    "path": "../cgi/set.cgi?cmd=mcast_igsQryVlan",
+    "verb": "set"
+  },
+  "set_switchMcastIgsQryVlanDel": {
+    "cmd": "mcast_igsQryVlanDel",
+    "path": "../cgi/set.cgi?cmd=mcast_igsQryVlanDel",
+    "verb": "set"
+  },
+  "set_switchMcastIgsRtIntf": {
+    "cmd": "mcast_igsRtIntf",
+    "path": "../cgi/set.cgi?cmd=mcast_igsRtIntf",
+    "verb": "set"
+  },
+  "set_switchMcastIgsRtVlan": {
+    "cmd": "mcast_igsRtVlan",
+    "path": "../cgi/set.cgi?cmd=mcast_igsRtVlan",
+    "verb": "set"
+  },
+  "set_switchMcastIgsTbClr": {
+    "cmd": "mcast_igsTbClr",
+    "path": "../cgi/set.cgi?cmd=mcast_igsTbClr",
+    "verb": "set"
+  },
+  "set_switchMcastIgsVlan": {
+    "cmd": "mcast_igsVlan",
+    "path": "../cgi/set.cgi?cmd=mcast_igsVlan",
+    "verb": "set"
+  },
+  "set_switchMcastIgsVlanAdd": {
+    "cmd": "mcast_igsVlanAdd",
+    "path": "../cgi/set.cgi?cmd=mcast_igsVlanAdd",
+    "verb": "set"
+  },
+  "set_switchMcastIgsVlanDel": {
+    "cmd": "mcast_igsVlanDel",
+    "path": "../cgi/set.cgi?cmd=mcast_igsVlanDel",
+    "verb": "set"
+  },
+  "set_switchMcastMfdbTbClr": {
+    "cmd": "mcast_mfdbClr",
+    "path": "../cgi/set.cgi?cmd=mcast_mfdbClr",
+    "verb": "set"
+  },
+  "set_switchMcastMldGlobal": {
+    "cmd": "mcast_mldGlobal",
+    "path": "../cgi/set.cgi?cmd=mcast_mldGlobal",
+    "verb": "set"
+  },
+  "set_switchMcastMldIntf": {
+    "cmd": "mcast_mldIntf",
+    "path": "../cgi/set.cgi?cmd=mcast_mldIntf",
+    "verb": "set"
+  },
+  "set_switchMcastMldQry": {
+    "cmd": "mcast_mldQry",
+    "path": "../cgi/set.cgi?cmd=mcast_mldQry",
+    "verb": "set"
+  },
+  "set_switchMcastMldQryVlan": {
+    "cmd": "mcast_mldQryVlan",
+    "path": "../cgi/set.cgi?cmd=mcast_mldQryVlan",
+    "verb": "set"
+  },
+  "set_switchMcastMldQryVlanAdd": {
+    "cmd": "mcast_mldQryVlanAdd",
+    "path": "../cgi/set.cgi?cmd=mcast_mldQryVlanAdd",
+    "verb": "set"
+  },
+  "set_switchMcastMldQryVlanDel": {
+    "cmd": "mcast_mldQryVlanDel",
+    "path": "../cgi/set.cgi?cmd=mcast_mldQryVlanDel",
+    "verb": "set"
+  },
+  "set_switchMcastMldRtIntf": {
+    "cmd": "mcast_mldRtIntf",
+    "path": "../cgi/set.cgi?cmd=mcast_mldRtIntf",
+    "verb": "set"
+  },
+  "set_switchMcastMldRtVlan": {
+    "cmd": "mcast_mldRtVlan",
+    "path": "../cgi/set.cgi?cmd=mcast_mldRtVlan",
+    "verb": "set"
+  },
+  "set_switchMcastMldVlan": {
+    "cmd": "mcast_mldVlan",
+    "path": "../cgi/set.cgi?cmd=mcast_mldVlan",
+    "verb": "set"
+  },
+  "set_switchMcastMldVlanAdd": {
+    "cmd": "mcast_mldVlanAdd",
+    "path": "../cgi/set.cgi?cmd=mcast_mldVlanAdd",
+    "verb": "set"
+  },
+  "set_switchMcastMldVlanDel": {
+    "cmd": "mcast_mldVlanDel",
+    "path": "../cgi/set.cgi?cmd=mcast_mldVlanDel",
+    "verb": "set"
+  },
+  "set_switchMvrGlobal": {
+    "cmd": "mvr_global",
+    "path": "../cgi/set.cgi?cmd=mvr_global",
+    "verb": "set"
+  },
+  "set_switchMvrGroupCfg": {
+    "cmd": "mvr_groupCfg",
+    "path": "../cgi/set.cgi?cmd=mvr_groupCfg",
+    "verb": "set"
+  },
+  "set_switchMvrGroupCfgAdd": {
+    "cmd": "mvr_groupCfgAdd",
+    "path": "../cgi/set.cgi?cmd=mvr_groupCfgAdd",
+    "verb": "set"
+  },
+  "set_switchMvrGroupCfgDel": {
+    "cmd": "mvr_groupCfgDel",
+    "path": "../cgi/set.cgi?cmd=mvr_groupCfgDel",
+    "verb": "set"
+  },
+  "set_switchMvrGroupMbr": {
+    "cmd": "mvr_groupMbr",
+    "path": "../cgi/set.cgi?cmd=mvr_groupMbr",
+    "verb": "set"
+  },
+  "set_switchMvrIntf": {
+    "cmd": "mvr_intf",
+    "path": "../cgi/set.cgi?cmd=mvr_intf",
+    "verb": "set"
+  },
+  "set_switchMvrStat": {
+    "cmd": "mvr_statClr",
+    "path": "../cgi/get.cgi?cmd=mvr_statClr",
+    "verb": "get"
+  },
+  "set_switchPortsPort": {
+    "cmd": "port_port",
+    "path": "../cgi/set.cgi?cmd=port_port",
+    "verb": "set"
+  },
+  "set_switchStpConf": {
+    "cmd": "stp_conf",
+    "path": "../cgi/set.cgi?cmd=stp_conf",
+    "verb": "set"
+  },
+  "set_switchStpCstConf": {
+    "cmd": "stp_cst",
+    "path": "../cgi/set.cgi?cmd=stp_cst",
+    "verb": "set"
+  },
+  "set_switchStpCstPortConf": {
+    "cmd": "stp_cstPortConf",
+    "path": "../cgi/set.cgi?cmd=stp_cstPortConf",
+    "verb": "set"
+  },
+  "set_switchStpCstPortStatus": {
+    "cmd": "stp_cstPortStatus",
+    "path": "../cgi/set.cgi?cmd=stp_cstPortStatus",
+    "verb": "set"
+  },
+  "set_switchStpMstAdd": {
+    "cmd": "stp_mstAdd",
+    "path": "../cgi/set.cgi?cmd=stp_mstAdd",
+    "verb": "set"
+  },
+  "set_switchStpMstConf": {
+    "cmd": "stp_mst",
+    "path": "../cgi/set.cgi?cmd=stp_mst",
+    "verb": "set"
+  },
+  "set_switchStpMstDel": {
+    "cmd": "stp_mstDel",
+    "path": "../cgi/set.cgi?cmd=stp_mstDel",
+    "verb": "set"
+  },
+  "set_switchStpMstPortConf": {
+    "cmd": "stp_mstPortConf",
+    "path": "../cgi/set.cgi?cmd=stp_mstPortConf",
+    "verb": "set"
+  },
+  "set_switchStpRstp": {
+    "cmd": "stp_rstp",
+    "path": "../cgi/set.cgi?cmd=stp_rstp",
+    "verb": "set"
+  },
+  "set_switchStpStats": {
+    "cmd": "stp_stats",
+    "path": "../cgi/set.cgi?cmd=stp_stats",
+    "verb": "set"
+  },
+  "set_switchTrunkConf": {
+    "cmd": "vlan_trunking",
+    "path": "../cgi/set.cgi?cmd=vlan_trunking",
+    "verb": "set"
+  },
+  "set_switchVlanConf": {
+    "cmd": "vlan_conf",
+    "path": "../cgi/set.cgi?cmd=vlan_conf",
+    "verb": "set"
+  },
+  "set_switchVlanConfAdd": {
+    "cmd": "vlan_confAdd",
+    "path": "../cgi/set.cgi?cmd=vlan_confAdd",
+    "verb": "set"
+  },
+  "set_switchVlanConfDel": {
+    "cmd": "vlan_confDel",
+    "path": "../cgi/set.cgi?cmd=vlan_confDel",
+    "verb": "set"
+  },
+  "set_switchVlanGarp": {
+    "cmd": "vlan_gvrp",
+    "path": "../cgi/set.cgi?cmd=vlan_gvrp",
+    "verb": "set"
+  },
+  "set_switchVlanGarpPort": {
+    "cmd": "vlan_gvrp_port",
+    "path": "../cgi/set.cgi?cmd=vlan_gvrp_port",
+    "verb": "set"
+  },
+  "set_switchVlanIntf": {
+    "cmd": "vlan_intf",
+    "path": "../cgi/set.cgi?cmd=vlan_intf",
+    "verb": "set"
+  },
+  "set_switchVlanMacAdd": {
+    "cmd": "vlan_macAdd",
+    "path": "../cgi/set.cgi?cmd=vlan_macAdd",
+    "verb": "set"
+  },
+  "set_switchVlanMacDel": {
+    "cmd": "vlan_macDel",
+    "path": "../cgi/set.cgi?cmd=vlan_macDel",
+    "verb": "set"
+  },
+  "set_switchVlanMbr": {
+    "cmd": "vlan_membership",
+    "path": "../cgi/set.cgi?cmd=vlan_membership",
+    "verb": "set"
+  },
+  "set_switchVlanProto": {
+    "cmd": "vlan_proto",
+    "path": "../cgi/set.cgi?cmd=vlan_proto",
+    "verb": "set"
+  },
+  "set_switchVlanProtoAdd": {
+    "cmd": "vlan_protoAdd",
+    "path": "../cgi/set.cgi?cmd=vlan_protoAdd",
+    "verb": "set"
+  },
+  "set_switchVlanProtoDel": {
+    "cmd": "vlan_protoDel",
+    "path": "../cgi/set.cgi?cmd=vlan_protoDel",
+    "verb": "set"
+  },
+  "set_switchVlanProtoMbr": {
+    "cmd": "vlan_proto_mbr",
+    "path": "../cgi/set.cgi?cmd=vlan_proto_mbr",
+    "verb": "set"
+  },
+  "set_switchVlanVoice": {
+    "cmd": "vlan_voiceVlan",
+    "path": "../cgi/set.cgi?cmd=vlan_voiceVlan",
+    "verb": "set"
+  },
+  "set_sysFirstTimeEnableCloud": {
+    "cmd": "sys_firstTimeEnableCloud",
+    "path": "../cgi/set.cgi?cmd=sys_firstTimeEnableCloud",
+    "verb": "set"
+  },
+  "set_sysLldpMedPort": {
+    "cmd": "lldp_medPort",
+    "path": "../cgi/set.cgi?cmd=lldp_medPort",
+    "verb": "set"
+  },
+  "set_sysLldpPort": {
+    "cmd": "lldp_port",
+    "path": "../cgi/set.cgi?cmd=lldp_port",
+    "verb": "set"
+  },
+  "set_sysLldpProp": {
+    "cmd": "lldp_prop",
+    "path": "../cgi/set.cgi?cmd=lldp_prop",
+    "verb": "set"
+  },
+  "set_sysMgmtAutoDos": {
+    "cmd": "dos_auto",
+    "path": "../cgi/set.cgi?cmd=dos_auto",
+    "verb": "set"
+  },
+  "set_sysMgmtBonjour": {
+    "cmd": "sys_bonjour",
+    "path": "../cgi/set.cgi?cmd=sys_bonjour",
+    "verb": "set"
+  },
+  "set_sysMgmtDayLight": {
+    "cmd": "time_dls",
+    "path": "../cgi/set.cgi?cmd=time_dls",
+    "verb": "set"
+  },
+  "set_sysMgmtDns": {
+    "cmd": "sys_dnsConf",
+    "path": "../cgi/set.cgi?cmd=sys_dnsConf",
+    "verb": "set"
+  },
+  "set_sysMgmtDnsAdd": {
+    "cmd": "sys_dnsConfAdd",
+    "path": "../cgi/set.cgi?cmd=sys_dnsConfAdd",
+    "verb": "set"
+  },
+  "set_sysMgmtDnsDel": {
+    "cmd": "sys_dnsConfDel",
+    "path": "../cgi/set.cgi?cmd=sys_dnsConfDel",
+    "verb": "set"
+  },
+  "set_sysMgmtDosConf": {
+    "cmd": "dos_cfg",
+    "path": "../cgi/set.cgi?cmd=dos_cfg",
+    "verb": "set"
+  },
+  "set_sysMgmtGreen": {
+    "cmd": "sys_greenProp",
+    "path": "../cgi/set.cgi?cmd=sys_greenProp",
+    "verb": "set"
+  },
+  "set_sysMgmtGreenIntf": {
+    "cmd": "sys_greenIntf",
+    "path": "../cgi/set.cgi?cmd=sys_greenIntf",
+    "verb": "set"
+  },
+  "set_sysMgmtHost": {
+    "cmd": "sys_hostConf",
+    "path": "../cgi/set.cgi?cmd=sys_hostConf",
+    "verb": "set"
+  },
+  "set_sysMgmtHostAdd": {
+    "cmd": "sys_hostConfAdd",
+    "path": "../cgi/set.cgi?cmd=sys_hostConfAdd",
+    "verb": "set"
+  },
+  "set_sysMgmtHostDel": {
+    "cmd": "sys_hostConfDel",
+    "path": "../cgi/set.cgi?cmd=sys_hostConfDel",
+    "verb": "set"
+  },
+  "set_sysMgmtInfo": {
+    "cmd": "sys_info",
+    "path": "../cgi/set.cgi?cmd=sys_info",
+    "verb": "set"
+  },
+  "set_sysMgmtIp": {
+    "cmd": "sys_ip",
+    "path": "../cgi/set.cgi?cmd=sys_ip",
+    "verb": "set"
+  },
+  "set_sysMgmtIpv6": {
+    "cmd": "sys_ipv6",
+    "path": "../cgi/set.cgi?cmd=sys_ipv6",
+    "verb": "set"
+  },
+  "set_sysMgmtIpv6Add": {
+    "cmd": "sys_ipv6Add",
+    "path": "../cgi/set.cgi?cmd=sys_ipv6Add",
+    "verb": "set"
+  },
+  "set_sysMgmtIpv6Del": {
+    "cmd": "sys_ipv6Del",
+    "path": "../cgi/set.cgi?cmd=sys_ipv6Del",
+    "verb": "set"
+  },
+  "set_sysMgmtIpv6NeighborClear": {
+    "cmd": "sys_ipv6NeighborClear",
+    "path": "../cgi/set.cgi?cmd=sys_ipv6NeighborClear",
+    "verb": "set"
+  },
+  "set_sysMgmtLedCtrl": {
+    "cmd": "sys_ledCtrl",
+    "path": "../cgi/set.cgi?cmd=sys_ledCtrl",
+    "verb": "set"
+  },
+  "set_sysMgmtSntp": {
+    "cmd": "time_sntp",
+    "path": "../cgi/set.cgi?cmd=time_sntp",
+    "verb": "set"
+  },
+  "set_sysMgmtSntpAdd": {
+    "cmd": "time_sntpAdd",
+    "path": "../cgi/set.cgi?cmd=time_sntpAdd",
+    "verb": "set"
+  },
+  "set_sysMgmtSntpDel": {
+    "cmd": "time_sntpDel",
+    "path": "../cgi/set.cgi?cmd=time_sntpDel",
+    "verb": "set"
+  },
+  "set_sysMgmtTime": {
+    "cmd": "time_time",
+    "path": "../cgi/set.cgi?cmd=time_time",
+    "verb": "set"
+  },
+  "set_sysMgmtcpuStatus": {
+    "cmd": "sys_cpu_status",
+    "path": "../cgi/set.cgi?cmd=sys_cpu_status",
+    "verb": "set"
+  },
+  "set_sysMgmtcpuThreshold": {
+    "cmd": "sys_cpu_threshold",
+    "path": "../cgi/set.cgi?cmd=sys_cpu_threshold",
+    "verb": "set"
+  },
+  "set_sysPoEConf": {
+    "cmd": "poe_conf",
+    "path": "../cgi/set.cgi?cmd=poe_conf",
+    "verb": "set"
+  },
+  "set_sysPoEPort": {
+    "cmd": "poe_port",
+    "path": "../cgi/set.cgi?cmd=poe_port",
+    "verb": "set"
+  },
+  "set_sysPoEPortReset": {
+    "cmd": "poe_portReset",
+    "path": "../cgi/set.cgi?cmd=poe_portReset",
+    "verb": "set"
+  },
+  "set_sysSccd": {
+    "cmd": "sys_sccd",
+    "path": "../cgi/set.cgi?cmd=sys_sccd",
+    "verb": "set"
+  },
+  "set_sysServDai": {
+    "cmd": "dai_conf",
+    "path": "../cgi/set.cgi?cmd=dai_conf",
+    "verb": "set"
+  },
+  "set_sysServDaiAceAdd": {
+    "cmd": "dai_aceAdd",
+    "path": "../cgi/set.cgi?cmd=dai_aceAdd",
+    "verb": "set"
+  },
+  "set_sysServDaiAceDel": {
+    "cmd": "dai_aceDel",
+    "path": "../cgi/set.cgi?cmd=dai_aceDel",
+    "verb": "set"
+  },
+  "set_sysServDaiAclAdd": {
+    "cmd": "dai_aclAdd",
+    "path": "../cgi/set.cgi?cmd=dai_aclAdd",
+    "verb": "set"
+  },
+  "set_sysServDaiAclDel": {
+    "cmd": "dai_aclDel",
+    "path": "../cgi/set.cgi?cmd=dai_aclDel",
+    "verb": "set"
+  },
+  "set_sysServDaiIntf": {
+    "cmd": "dai_intf",
+    "path": "../cgi/set.cgi?cmd=dai_intf",
+    "verb": "set"
+  },
+  "set_sysServDaiStatistic": {
+    "cmd": "dai_statistic",
+    "path": "../cgi/set.cgi?cmd=dai_statistic",
+    "verb": "set"
+  },
+  "set_sysServDaiVlan": {
+    "cmd": "dai_vlan",
+    "path": "../cgi/set.cgi?cmd=dai_vlan",
+    "verb": "set"
+  },
+  "set_sysServDlr": {
+    "cmd": "ds_dlr",
+    "path": "../cgi/set.cgi?cmd=ds_dlr",
+    "verb": "set"
+  },
+  "set_sysServDlrIntf": {
+    "cmd": "ds_dlrIntf",
+    "path": "../cgi/set.cgi?cmd=ds_dlrIntf",
+    "verb": "set"
+  },
+  "set_sysServDlrStatistic": {
+    "cmd": "ds_dlrStat",
+    "path": "../cgi/set.cgi?cmd=ds_dlrStat",
+    "verb": "set"
+  },
+  "set_sysServDs": {
+    "cmd": "ds_conf",
+    "path": "../cgi/set.cgi?cmd=ds_conf",
+    "verb": "set"
+  },
+  "set_sysServDsBind": {
+    "cmd": "ds_bind",
+    "path": "../cgi/set.cgi?cmd=ds_bind",
+    "verb": "set"
+  },
+  "set_sysServDsBindAdd": {
+    "cmd": "ds_bindAdd",
+    "path": "../cgi/set.cgi?cmd=ds_bindAdd",
+    "verb": "set"
+  },
+  "set_sysServDsBindDel": {
+    "cmd": "ds_bindDel",
+    "path": "../cgi/set.cgi?cmd=ds_bindDel",
+    "verb": "set"
+  },
+  "set_sysServDsIntf": {
+    "cmd": "ds_intf",
+    "path": "../cgi/set.cgi?cmd=ds_intf",
+    "verb": "set"
+  },
+  "set_sysServDsPersist": {
+    "cmd": "ds_db",
+    "path": "../cgi/set.cgi?cmd=ds_db",
+    "verb": "set"
+  },
+  "set_sysServDsStatistic": {
+    "cmd": "ds_statistic",
+    "path": "../cgi/set.cgi?cmd=ds_statistic",
+    "verb": "set"
+  },
+  "set_sysSnmpCommunity": {
+    "cmd": "snmp_community",
+    "path": "../cgi/set.cgi?cmd=snmp_community",
+    "verb": "set"
+  },
+  "set_sysSnmpCommunityAdd": {
+    "cmd": "snmp_communityAdd",
+    "path": "../cgi/set.cgi?cmd=snmp_communityAdd",
+    "verb": "set"
+  },
+  "set_sysSnmpCommunityDel": {
+    "cmd": "snmp_communityDel",
+    "path": "../cgi/set.cgi?cmd=snmp_communityDel",
+    "verb": "set"
+  },
+  "set_sysSnmpTrapConfg": {
+    "cmd": "snmp_trapConfg",
+    "path": "../cgi/set.cgi?cmd=snmp_trapConfg",
+    "verb": "set"
+  },
+  "set_sysSnmpTrapConfgAdd": {
+    "cmd": "snmp_trapConfgAdd",
+    "path": "../cgi/set.cgi?cmd=snmp_trapConfgAdd",
+    "verb": "set"
+  },
+  "set_sysSnmpTrapConfgDel": {
+    "cmd": "snmp_trapConfgDel",
+    "path": "../cgi/set.cgi?cmd=snmp_trapConfgDel",
+    "verb": "set"
+  },
+  "set_sysSnmpTrapFlag": {
+    "cmd": "snmp_trapFlag",
+    "path": "../cgi/set.cgi?cmd=snmp_trapFlag",
+    "verb": "set"
+  },
+  "set_sysSnmpUser": {
+    "cmd": "snmp_user",
+    "path": "../cgi/set.cgi?cmd=snmp_user",
+    "verb": "set"
+  },
+  "set_sysTsConf": {
+    "cmd": "time_ts_conf",
+    "path": "../cgi/set.cgi?cmd=time_ts_conf",
+    "verb": "set"
+  },
+  "set_sysTsConfAdd": {
+    "cmd": "time_ts_confAdd",
+    "path": "../cgi/set.cgi?cmd=time_ts_confAdd",
+    "verb": "set"
+  },
+  "set_sysTsConfDel": {
+    "cmd": "time_ts_confDel",
+    "path": "../cgi/set.cgi?cmd=time_ts_confDel",
+    "verb": "set"
+  },
+  "set_sysTsGlobalAdd": {
+    "cmd": "time_ts_globalAdd",
+    "path": "../cgi/set.cgi?cmd=time_ts_globalAdd",
+    "verb": "set"
+  },
+  "set_sysTsGlobalDel": {
+    "cmd": "time_ts_globalDel",
+    "path": "../cgi/set.cgi?cmd=time_ts_globalDel",
+    "verb": "set"
+  }
+}
