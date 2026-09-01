@@ -142,12 +142,18 @@ def main():
             after.get("curAct"), after.get("nextAct")))
 
         if args.activate:
-            # The dual-image page posts the chosen slot back to file_dualStatus.
+            # file_dualStatus is READ-ONLY - its page is a refresh button and
+            # nothing else. The write lives on file_dualConf, which takes the
+            # slot as imgName (0-based) plus imgActive as a checkbox.
             print("  setting next boot to image%d ..." % args.image)
-            print("   ->", json.dumps(sw.set("file_dualStatus",
-                                             {"nextAct": "image%d" % args.image}))[:160])
+            print("   ->", json.dumps(sw.set("file_dualConf",
+                                             {"imgName": str(args.image - 1),
+                                              "imgActive": "on"}))[:160])
             final = sw.get("file_dualStatus").get("data", {}).get("status", [{}])[0]
             print("  next boot is now: %s" % final.get("nextAct"))
+            print("  VERIFY WITH THE CLI before rebooting: `show bootvar` should mark the")
+            print("  new slot with '*'. The web UI's nextAct field has agreed while the")
+            print("  switch went on to boot the other image anyway.")
     finally:
         sw.logout()
 
