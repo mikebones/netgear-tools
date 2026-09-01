@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 
 	"context"
 
@@ -36,7 +36,7 @@ type portForwardingRulesModel struct {
 }
 
 func (d *portForwardingRulesDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_port_forwarding_rules"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_port_forwarding_rules"
 }
 
 func (d *portForwardingRulesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

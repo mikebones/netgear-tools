@@ -1,4 +1,4 @@
-module terraform-provider-pr60x
+module netgear-tools
 
 go 1.26.2
 

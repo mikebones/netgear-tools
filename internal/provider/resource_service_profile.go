@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 
 	"context"
 	"fmt"
@@ -29,7 +29,7 @@ func NewServiceProfileResource() resource.Resource {
 }
 
 func (r *serviceProfileResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_service_profile"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_service_profile"
 }
 
 func (r *serviceProfileResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {

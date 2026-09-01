@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 
 	"context"
 	"fmt"
@@ -35,7 +35,7 @@ type vlanDHCPDNSModel struct {
 }
 
 func (r *vlanDHCPDNSResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vlan_dhcp_dns"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_vlan_dhcp_dns"
 }
 
 func (r *vlanDHCPDNSResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {

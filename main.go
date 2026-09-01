@@ -6,7 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"terraform-provider-pr60x/internal/provider"
+	"netgear-tools/internal/provider"
 )
 
 // version is set by the build (ldflags -X main.version=...) when packaged
@@ -17,7 +17,7 @@ func main() {
 	err := providerserver.Serve(context.Background(), provider.New(version), providerserver.ServeOpts{
 		// Matches the local filesystem mirror convention used by this repo's
 		// sibling local providers.
-		Address: "local/mikebones/pr60x",
+		Address: "local/mikebones/netgear",
 	})
 	if err != nil {
 		log.Fatal(err.Error())

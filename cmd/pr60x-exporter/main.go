@@ -26,7 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 )
 
 const namespace = "pr60x"

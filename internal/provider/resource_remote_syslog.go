@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 
 	"context"
 
@@ -32,7 +32,7 @@ type remoteSyslogModel struct {
 }
 
 func (r *remoteSyslogResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_remote_syslog"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_remote_syslog"
 }
 
 func (r *remoteSyslogResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {

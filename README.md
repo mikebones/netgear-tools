@@ -12,18 +12,18 @@ response shapes are in `scripts/schema.json`.
 | Layer | State |
 | --- | --- |
 | Transport, auth, session handling | **Verified live** |
-| `pr60x_device_info` data source | **Verified live** |
-| `pr60x_service_profiles` data source | **Verified live** |
-| `pr60x_port_forwarding_rules` data source | **Verified live** |
-| `pr60x_vlan_profiles` data source | **Verified live** |
-| `pr60x_dhcp_leases` data source | **Verified live** |
-| `pr60x_wan_status` data source | **Verified live** |
-| `pr60x_service_profile` resource | **Full CRUD verified live** through `terraform apply`/`destroy` |
-| `pr60x_port_forwarding_rule` resource | add/delete verified live; edit follows the same confirmed contract |
-| `pr60x_vlan_dhcp_dns` resource | **Verified live** — applied, imported, clean plan |
-| `pr60x_upnp` resource | **Verified live** — write shape confirmed by no-op round trip |
-| `pr60x_sqm` resource | Write shape confirmed; a real shaping rate has not been applied |
-| `pr60x_static_route` resource | **Unverified** — field names inferred, see below |
+| `netgear_pr60x_device_info` data source | **Verified live** |
+| `netgear_netgear_pr60x_service_profiles` data source | **Verified live** |
+| `netgear_netgear_pr60x_port_forwarding_rules` data source | **Verified live** |
+| `netgear_pr60x_vlan_profiles` data source | **Verified live** |
+| `netgear_pr60x_dhcp_leases` data source | **Verified live** |
+| `netgear_pr60x_wan_status` data source | **Verified live** |
+| `netgear_pr60x_service_profile` resource | **Full CRUD verified live** through `terraform apply`/`destroy` |
+| `netgear_pr60x_port_forwarding_rule` resource | add/delete verified live; edit follows the same confirmed contract |
+| `netgear_pr60x_vlan_dhcp_dns` resource | **Verified live** — applied, imported, clean plan |
+| `netgear_pr60x_upnp` resource | **Verified live** — write shape confirmed by no-op round trip |
+| `netgear_pr60x_sqm` resource | Write shape confirmed; a real shaping rate has not been applied |
+| `netgear_pr60x_static_route` resource | **Unverified** — field names inferred, see below |
 
 Write shapes were confirmed by round trip against firmware 2.7.0.111 on
 2026-08-31 (`scripts/roundtrip.py`, `scripts/roundtrip2.py`), and the full
@@ -32,7 +32,7 @@ port-forwarding probe was created with `enabled = 0` throughout, so no port was
 ever actually opened during testing, and both tables were diffed against
 snapshots afterwards.
 
-`pr60x_static_route` is the exception: the device has zero static routes, so
+`netgear_pr60x_static_route` is the exception: the device has zero static routes, so
 there was no response to read field names from. They come from the web UI's
 form. Create one throwaway route and confirm it reads back before relying on it.
 
@@ -80,16 +80,16 @@ re-check it.
 ```hcl
 terraform {
   required_providers {
-    pr60x = { source = "local/mikebones/pr60x" }
+    netgear = { source = "local/mikebones/netgear" }
   }
 }
 
-provider "pr60x" {}   # endpoint, username and password all have env fallbacks
+provider "netgear" {}   # endpoint, username and password all have env fallbacks
 
-data "pr60x_port_forwarding_rules" "all" {}
+data "netgear_netgear_pr60x_port_forwarding_rules" "all" {}
 
 output "internet_exposed" {
-  value = [for r in data.pr60x_port_forwarding_rules.all.rules : r if r.enabled]
+  value = [for r in data.netgear_netgear_pr60x_port_forwarding_rules.all.rules : r if r.enabled]
 }
 ```
 
@@ -112,16 +112,16 @@ profile on port 2222 and `internal_service` at a plain `SSH` profile on 22, and
 the device translates between them.
 
 ```hcl
-resource "pr60x_service_profile" "wg_kube" {
+resource "netgear_pr60x_service_profile" "wg_kube" {
   name       = "WG-KUBE"
   proto      = "udp"
   start_port = 51226
   end_port   = 51226
 }
 
-resource "pr60x_port_forwarding_rule" "wg_kube" {
-  external_service = pr60x_service_profile.wg_kube.name
-  internal_service = pr60x_service_profile.wg_kube.name
+resource "netgear_pr60x_port_forwarding_rule" "wg_kube" {
+  external_service = netgear_pr60x_service_profile.wg_kube.name
+  internal_service = netgear_pr60x_service_profile.wg_kube.name
   dest_ip_address  = "192.168.1.72"
 }
 ```
@@ -137,8 +137,8 @@ Nothing here was created by Terraform, so start by importing:
 ```bash
 cd examples
 PR60X_PASSWORD=... terraform plan          # lists current ids
-terraform import pr60x_port_forwarding_rule.plex 0
-terraform import pr60x_service_profile.plex 13
+terraform import netgear_pr60x_port_forwarding_rule.plex 0
+terraform import netgear_pr60x_service_profile.plex 13
 ```
 
 ## Prometheus exporter
@@ -159,8 +159,8 @@ pr60x_uptime_seconds 2.789658e+06
 pr60x_internet_connected 1
 pr60x_port_link_speed_mbps{port="LAN4"} 10000
 pr60x_port_rx_bytes{port="wan1"} 8.140456886219e+12
-pr60x_dhcp_leases{vlan="VLAN1"} 27
-pr60x_port_forwarding_rules_enabled 9
+netgear_pr60x_dhcp_leases{vlan="VLAN1"} 27
+netgear_netgear_pr60x_port_forwarding_rules_enabled 9
 ```
 
 **It polls on its own schedule and serves a cached snapshot** — it does not
@@ -204,7 +204,7 @@ ServiceMonitor; delete whichever you don't use.
 ## Building the provider
 
 ```bash
-go build -o ~/.terraform.d/plugins/local/mikebones/pr60x/0.1.0/windows_amd64/terraform-provider-pr60x.exe .
+go build -o ~/.terraform.d/plugins/local/mikebones/netgear/0.1.0/windows_amd64/terraform-provider-netgear.exe .
 cd examples && terraform init && PR60X_PASSWORD=... terraform plan
 ```
 
@@ -255,24 +255,24 @@ re-asserts, so a firmware upgrade or someone clicking around the web UI shows
 up as drift:
 
 ```hcl
-resource "pr60x_upnp" "off" {
+resource "netgear_pr60x_upnp" "off" {
   enabled = false
 }
 ```
 
 If UPnP is on, the port-forwarding rules you manage are not the whole story —
-LAN devices can open their own. The exporter's `pr60x_upnp_enabled`,
+LAN devices can open their own. The exporter's `netgear_pr60x_upnp_enabled`,
 `pr60x_dmz_enabled`, `pr60x_wan_ping_enabled` and `pr60x_secure_dns_enabled`
 barely move, which is the point: alert on the change, not the value.
 
 ### Bufferbloat
 
 If latency is fine at idle and terrible whenever the uplink is busy, that is
-bufferbloat — packets queueing in an oversized buffer at the ISP. `pr60x_sqm`
+bufferbloat — packets queueing in an oversized buffer at the ISP. `netgear_pr60x_sqm`
 moves the queue onto the router where it can be managed:
 
 ```hcl
-resource "pr60x_sqm" "wan" {
+resource "netgear_pr60x_sqm" "wan" {
   wan_index = 0
   download  = 900   # ~85-95% of the line's REAL measured rate
   upload    = 35
@@ -294,7 +294,7 @@ local resolver knows about fails roughly half the time — deterministically, bu
 looking for all the world like flaky networking.
 
 ```hcl
-resource "pr60x_vlan_dhcp_dns" "lan" {
+resource "netgear_pr60x_vlan_dhcp_dns" "lan" {
   vlan_id = 1
   servers = ["192.168.1.64"] # local resolver only
 }
@@ -309,21 +309,21 @@ resolvers until they renew.
 Import the current value first, so the first plan tells you what is really set:
 
 ```bash
-terraform import pr60x_vlan_dhcp_dns.lan 1
+terraform import netgear_pr60x_vlan_dhcp_dns.lan 1
 ```
 
 ## Auditing your own device
 
 The read-only data sources are worth running even if you never manage anything
-with this provider. `pr60x_port_forwarding_rules` is the authoritative answer to
+with this provider. `netgear_netgear_pr60x_port_forwarding_rules` is the authoritative answer to
 "what is reachable from the internet?", which on most networks is recorded
-nowhere outside the appliance itself. `pr60x_vlan_profiles` exposes each VLAN's
+nowhere outside the appliance itself. `netgear_pr60x_vlan_profiles` exposes each VLAN's
 DHCP server state and its DHCP option 6 list, which is where surprising
 split-DNS behaviour usually turns out to originate.
 
 ## Known gaps
 
-- `pr60x_static_route` field names are unverified (above).
+- `netgear_pr60x_static_route` field names are unverified (above).
 - `getStaticLeaseProfiles` takes `{"vlanID": 1}` — capital ID, and it returns
   `{"vlanID":…, "List":[…]}`. Confirmed working, currently empty, not yet wired
   into a resource.

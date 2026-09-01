@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 
 	"context"
 	"sort"
@@ -42,7 +42,7 @@ type vlanProfilesModel struct {
 }
 
 func (d *vlanProfilesDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vlan_profiles"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_vlan_profiles"
 }
 
 func (d *vlanProfilesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -137,7 +137,7 @@ type dhcpLeasesModel struct {
 }
 
 func (d *dhcpLeasesDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_dhcp_leases"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_dhcp_leases"
 }
 
 func (d *dhcpLeasesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -218,7 +218,7 @@ type wanStatusModel struct {
 }
 
 func (d *wanStatusDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_wan_status"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_wan_status"
 }
 
 func (d *wanStatusDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {

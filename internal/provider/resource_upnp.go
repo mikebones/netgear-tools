@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 )
 
 var (
@@ -30,7 +30,7 @@ type upnpModel struct {
 }
 
 func (r *upnpResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_upnp"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_upnp"
 }
 
 func (r *upnpResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {

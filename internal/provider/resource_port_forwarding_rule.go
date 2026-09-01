@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 
 	"context"
 	"fmt"
@@ -31,7 +31,7 @@ func NewPortForwardingRuleResource() resource.Resource {
 }
 
 func (r *portForwardingRuleResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_port_forwarding_rule"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_port_forwarding_rule"
 }
 
 func (r *portForwardingRuleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {

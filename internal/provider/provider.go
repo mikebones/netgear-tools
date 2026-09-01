@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 
 	"context"
 	"os"
@@ -33,7 +33,7 @@ func New(version string) func() provider.Provider {
 }
 
 func (p *PR60XProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "pr60x"
+	resp.TypeName = "netgear"
 	resp.Version = p.version
 }
 

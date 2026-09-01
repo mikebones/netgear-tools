@@ -75,6 +75,13 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        # 65532 is distroless nonroot's UID. It must be given explicitly: the
+        # image declares USER by NAME ("nonroot"), and kubelet cannot verify a
+        # non-numeric user against runAsNonRoot, so it refuses to start the
+        # container with CreateContainerConfigError.
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:

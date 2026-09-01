@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-pr60x/internal/pr60x"
+	"netgear-tools/internal/pr60x"
 )
 
 var (
@@ -38,7 +38,7 @@ type sqmModel struct {
 }
 
 func (r *sqmResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_sqm"
+	resp.TypeName = req.ProviderTypeName + "_pr60x_sqm"
 }
 
 func (r *sqmResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
