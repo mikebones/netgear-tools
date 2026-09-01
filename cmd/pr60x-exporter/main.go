@@ -62,6 +62,15 @@ type metrics struct {
 	pendingAlarms prometheus.Gauge
 	dhcpLeases    *prometheus.GaugeVec
 	portForwards  prometheus.Gauge
+
+	connections    prometheus.Gauge
+	maxConnections prometheus.Gauge
+	upnpEnabled    prometheus.Gauge
+	dmzEnabled     prometheus.Gauge
+	wanPingEnabled prometheus.Gauge
+	portScanGuard  prometheus.Gauge
+	secureDNS      prometheus.Gauge
+	sqmEnabled     *prometheus.GaugeVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -103,6 +112,21 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		pendingAlarms: f.gauge("pending_alarms", "Unacknowledged alarms on the device."),
 		dhcpLeases:    f.gaugeVec("dhcp_leases", "Active DHCP leases the ROUTER is serving, per VLAN. Non-zero here means the router owns DHCP on that segment.", "vlan"),
 		portForwards:  f.gauge("port_forwarding_rules_enabled", "Enabled WAN-to-LAN forwards. Each one is an internet-facing exposure."),
+
+		// Posture metrics. These barely move, which is the point: alert on the
+		// change, not the value. A firmware upgrade or someone clicking around
+		// the web UI is exactly how a router quietly stops matching what you
+		// think it is.
+		connections: f.gauge("firewall_connections",
+			"Connections currently tracked. Compare against firewall_max_connections - exhausting the table breaks new connections while everything already established keeps working, which is a confusing failure to debug."),
+		maxConnections: f.gauge("firewall_max_connections", "Connection-tracking table size."),
+		upnpEnabled: f.gauge("upnp_enabled",
+			"1 if UPnP is on, meaning LAN devices can open WAN ports without asking and port_forwarding_rules_enabled is no longer the whole story."),
+		dmzEnabled:     f.gauge("dmz_enabled", "1 if a DMZ host is configured - that host is fully exposed."),
+		wanPingEnabled: f.gauge("wan_ping_enabled", "1 if the router answers ICMP on the WAN."),
+		portScanGuard:  f.gauge("port_scan_protection_enabled", "1 if port-scan protection is on."),
+		secureDNS:      f.gauge("secure_dns_enabled", "1 if the router does its own DoH/DoT - a second resolver path that can quietly bypass your local DNS."),
+		sqmEnabled:     f.gaugeVec("sqm_enabled", "1 if smart queue management (bufferbloat shaping) is active on the WAN.", "wan_index"),
 	}
 	return m
 }
@@ -247,6 +271,37 @@ func (p *poller) poll() {
 			}
 		}
 		p.m.portForwards.Set(float64(enabled))
+	}
+
+	if fw, err := p.client.GetBasicFirewall(); err != nil {
+		fail("getBasicFirewall", err)
+	} else {
+		p.m.connections.Set(float64(fw.CurrentConnections))
+		p.m.maxConnections.Set(float64(fw.MaxConcurrentConnections))
+		p.m.dmzEnabled.Set(float64(fw.DMZ.Enable))
+		p.m.wanPingEnabled.Set(float64(fw.EnablePingOnWAN))
+		p.m.portScanGuard.Set(float64(fw.EnablePortScan))
+	}
+
+	if u, err := p.client.GetUPnPSettings(); err != nil {
+		fail("getUpnpSettings", err)
+	} else {
+		p.m.upnpEnabled.Set(float64(u.Enabled))
+	}
+
+	if sd, err := p.client.GetSecureDNSSettings(); err != nil {
+		fail("getSecureDNSSettings", err)
+	} else {
+		p.m.secureDNS.Set(float64(sd.Enabled))
+	}
+
+	if profiles, err := p.client.GetSQMProfiles(); err != nil {
+		fail("getSqmProfiles", err)
+	} else {
+		p.m.sqmEnabled.Reset()
+		for _, s := range profiles {
+			p.m.sqmEnabled.WithLabelValues(strconv.FormatInt(s.WANIdx, 10)).Set(float64(s.Enabled))
+		}
 	}
 
 	p.m.scrapeDuration.Set(time.Since(start).Seconds())

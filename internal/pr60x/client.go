@@ -885,3 +885,112 @@ func (c *Client) GetDualWANStatus() ([]WANInterfaceStatus, error) {
 	}
 	return out.InterfaceStatus, nil
 }
+
+// --- SQM / smart queue management ------------------------------------------
+
+// SQMProfile is per-WAN traffic shaping. Setting download/upload slightly
+// BELOW the line's real rate is what fixes bufferbloat: it moves the queue
+// off the ISP's oversized buffer and onto the router, where it can be managed.
+// Zero with enabled=0 means the feature is off entirely.
+type SQMProfile struct {
+	WANIdx       int64  `json:"wanIdx"`
+	Enabled      int64  `json:"enabled"`
+	Download     int64  `json:"download"`
+	DownloadUnit string `json:"downloadUnit"`
+	Upload       int64  `json:"upload"`
+	UploadUnit   string `json:"uploadUnit"`
+}
+
+func (c *Client) GetSQMProfiles() ([]SQMProfile, error) {
+	var out []SQMProfile
+	if err := c.CallResult("getSqmProfiles", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *Client) GetSQMProfile(wanIdx int64) (*SQMProfile, error) {
+	all, err := c.GetSQMProfiles()
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].WANIdx == wanIdx {
+			return &all[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// SetSQMProfile writes one WAN's shaping config. Note the method name is
+// singular (setSqmProfile) while the getter is plural - the device is not
+// consistent about this.
+func (c *Client) SetSQMProfile(p SQMProfile) error {
+	return c.Call("setSqmProfile", p, nil)
+}
+
+// --- UPnP ------------------------------------------------------------------
+
+// UPnPSettings controls whether devices on the LAN can open WAN ports on their
+// own. Leaving this off and managing forwards explicitly is the whole reason
+// a port-forwarding resource is worth having.
+type UPnPSettings struct {
+	Enabled           int64 `json:"enabled"`
+	NotifyIntervalSec int64 `json:"notifyIntervalSec"`
+	NotifyTTL         int64 `json:"notifyTTL"`
+}
+
+func (c *Client) GetUPnPSettings() (*UPnPSettings, error) {
+	var out UPnPSettings
+	if err := c.CallResult("getUpnpSettings", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) SetUPnPSettings(s UPnPSettings) error {
+	return c.Call("setUpnpSettings", s, nil)
+}
+
+// --- Read-only posture and health ------------------------------------------
+
+type SessionTimeout struct {
+	TCPSessionTimeout  int64 `json:"tcpSessionTimeout"`
+	UDPSessionTimeout  int64 `json:"udpSessionTimeout"`
+	ICMPSessionTimeout int64 `json:"icmpSessionTimeout"`
+}
+
+type BasicFirewall struct {
+	EnablePortScan  int64 `json:"enablePortScan"`
+	EnablePingOnWAN int64 `json:"enablePingOnWan"`
+	EnableSIP       int64 `json:"enableSip"`
+	DMZ             struct {
+		Enable      int64  `json:"enable"`
+		IPv4Address string `json:"ipV4Address"`
+	} `json:"dmz"`
+	SessionTimeout           SessionTimeout `json:"sessionTimeout"`
+	MaxConcurrentConnections int64          `json:"maxConcurrentConnections"`
+	CurrentConnections       int64          `json:"currentConnections"`
+}
+
+func (c *Client) GetBasicFirewall() (*BasicFirewall, error) {
+	var out BasicFirewall
+	if err := c.CallResult("getBasicFirewall", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type SecureDNSSettings struct {
+	Enabled  int64    `json:"enabled"`
+	Fallback int64    `json:"fallback"`
+	Servers  []string `json:"servers"`
+}
+
+func (c *Client) GetSecureDNSSettings() (*SecureDNSSettings, error) {
+	var out SecureDNSSettings
+	if err := c.CallResult("getSecureDNSSettings", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

@@ -21,6 +21,8 @@ response shapes are in `scripts/schema.json`.
 | `pr60x_service_profile` resource | **Full CRUD verified live** through `terraform apply`/`destroy` |
 | `pr60x_port_forwarding_rule` resource | add/delete verified live; edit follows the same confirmed contract |
 | `pr60x_vlan_dhcp_dns` resource | **Verified live** — applied, imported, clean plan |
+| `pr60x_upnp` resource | **Verified live** — write shape confirmed by no-op round trip |
+| `pr60x_sqm` resource | Write shape confirmed; a real shaping rate has not been applied |
 | `pr60x_static_route` resource | **Unverified** — field names inferred, see below |
 
 Write shapes were confirmed by round trip against firmware 2.7.0.111 on
@@ -244,6 +246,44 @@ Python, stdlib only, no dependencies.
 `discovery.json` is gitignored deliberately — it contains live DHCP lease
 hostnames and MAC addresses plus the WAN public address. `schema.json` is the
 committed equivalent.
+
+### Pinning security posture
+
+Some settings matter less for what they do than for staying put. Declaring them
+turns "UPnP is off" from something you believe into something Terraform
+re-asserts, so a firmware upgrade or someone clicking around the web UI shows
+up as drift:
+
+```hcl
+resource "pr60x_upnp" "off" {
+  enabled = false
+}
+```
+
+If UPnP is on, the port-forwarding rules you manage are not the whole story —
+LAN devices can open their own. The exporter's `pr60x_upnp_enabled`,
+`pr60x_dmz_enabled`, `pr60x_wan_ping_enabled` and `pr60x_secure_dns_enabled`
+barely move, which is the point: alert on the change, not the value.
+
+### Bufferbloat
+
+If latency is fine at idle and terrible whenever the uplink is busy, that is
+bufferbloat — packets queueing in an oversized buffer at the ISP. `pr60x_sqm`
+moves the queue onto the router where it can be managed:
+
+```hcl
+resource "pr60x_sqm" "wan" {
+  wan_index = 0
+  download  = 900   # ~85-95% of the line's REAL measured rate
+  upload    = 35
+}
+```
+
+Measure the real rate first rather than using the number on the bill; the
+device's own speed test will do. Note it validates the range even when
+disabled — download and upload must land between 300 Kbps and 5 Gbps, so a
+rate is required regardless of `enabled`, and error `3103` means you are
+outside it.
 
 ### Fixing split DNS resolution
 
