@@ -25,7 +25,7 @@ deploy/kubernetes/    exporter manifests
 | --- | --- | --- | --- | --- | --- | --- |
 | **PR60X** router | JSON-RPC 2.0 | 238 methods | verified | yes | deployed | 7 resources |
 | **XS508TM** switch | REST `/api/v1/` | 288 routes, 199 read | verified | yes | built | 2 resources |
-| **MS510TXUP** switch | signed CGI | 550 endpoints | verified | partial | — | — |
+| **MS510TXUP** switch | signed CGI + RSA CSRF | 550 endpoints, 234 read | verified | script | — | — |
 | **WAX630E** AP | query-by-example | 27 API entries + templates | verified | yes | — | 1 resource |
 
 ## The four protocols
@@ -79,26 +79,46 @@ Two firmware quirks the code absorbs so dashboards do not have to:
   as `port_reported_link_up` with a help string saying so, rather than silently
   "fixing" it.
 
-### MS510TXUP switch — signed CGI
+### MS510TXUP switch — signed CGI behind an RSA CSRF token
 
-Legacy jQuery UI and the most defended of the four. Three mechanisms, all
-reproduced in `scripts/ms510txup_login.py`:
+Legacy jQuery/Backbone UI and by some distance the most defended of the four.
+Four mechanisms, all reproduced in `scripts/ms510txup_login.py`:
 
-- **Every URL is signed**: `&bj4=md5(<everything after the ?>)`. Unsigned
-  requests are rejected.
+- **Every URL is signed**: `&bj4=md5(<everything after the ?>)`, computed after
+  the cache-busting `&dummy=<ms>` is appended. An unsigned request is a **400**.
 - **The password is obfuscated**, never sent in clear. `encode()` builds a
   `320 - len(pw)` character string of random alphanumerics with the password's
   characters placed **in reverse at every 7th position**, and its length as a
   tens digit at index 123 and a ones digit at index 289.
 - **Login is a handshake**: `POST cgi/set.cgi?cmd=home_loginAuth` returns an
-  `authId`, then `home_loginStatus` is polled until it returns `ok` with a
-  session token. It genuinely answers `Not Auth` on the first poll.
+  `authId`, then `home_loginStatus` is polled with it until it answers `ok`.
+  It genuinely returns a non-ok status on the first poll.
+- **`sess` is not a session token**, and this is the part that cost the most
+  time. The UI base64-decodes it into three concatenated fields:
 
-Login is **verified working** and authenticated *page* loads succeed.
-Authenticated *CGI data* calls still return 404 — that gate has not been found,
-and it is not the session cookie, a Referer, or XHR headers.
-`scripts/ms510txup_endpoints.json` holds all 550 endpoints, including
-`log_remoteAdd` (syslog) and `sys_dnsConf` (DNS).
+  ```
+  tabid   = sess[0:32]     32-char session id
+  expo    = sess[32:37]    RSA public exponent, always "10001"
+  modulus = sess[37:]      1024-bit RSA modulus, hex
+  ```
+
+  It then **deletes** the `tabid` cookie it just set and authenticates every
+  subsequent request with a header instead:
+
+  ```
+  X-CSRF-XSID: base64(RSA_PKCS1v15(tabid, pubkey))
+  ```
+
+  The padding is randomised, so the value is different on every request by
+  design. Without the header the switch answers **404** — not 401, not 403 —
+  which is indistinguishable from a wrong URL and is why this looked for a
+  long time like an unfound endpoint rather than an unfound credential. The
+  two gates are independent and checked in order: no signature is a 400, no
+  CSRF header is a 404.
+
+With all four in place, all 234 read commands are reachable. Confirmed live:
+`home_sts` (per-port link, speed and PoE), `sys_info`, `lldp_neighbor`,
+`log_remote`, `sys_dnsConf`.
 
 Its SSH CLI works fully and is a viable alternative path, though config mode is
 limited and has **no `logging` command at all** — which is exactly why syslog
@@ -260,7 +280,7 @@ Python, stdlib only, no dependencies.
 | `set_dhcp_dns.py` | Sets DHCP option 6, with `--show` and `--restore`. |
 | `schemagen.py` | Reduces a discovery dump to the value-free `schema.json`. |
 | `xs508tm_discover.py` | Sweeps every XS508TM route safe to GET; refuses parameterised or state-changing ones. |
-| `ms510txup_login.py` | Ports the MS510TXUP's URL signing and password obfuscation. |
+| `ms510txup_login.py` | Full MS510TXUP client: URL signing, password obfuscation, the login handshake and the RSA CSRF header. Stdlib only - PKCS#1 v1.5 is implemented inline. |
 | `*_routes.json`, `*_endpoints.json`, `wax630e_api.json` | The recovered API surfaces. |
 
 Discovery dumps and device running-configs are **gitignored**: they carry LAN
@@ -269,8 +289,9 @@ value-free equivalent that is safe to commit.
 
 ## Known gaps
 
-- **MS510TXUP CGI authorization** — login works, data calls 404. This is the
-  blocker for its syslog, its DNS setting, and putting its config in Terraform.
+- **MS510TXUP has no Go client or Terraform resources yet.** The protocol is
+  fully worked out and `scripts/ms510txup_login.py` drives it, but its syslog
+  (`log_remote`) and DNS (`sys_dnsConf`) are not yet managed declaratively.
 - **WAX630E reads beyond the transcribed templates.** Auth and the syslog and
   device-info shapes are verified live; the station and radio templates in the
   bundle are fragments of larger payloads and still return `err_code 28`.
