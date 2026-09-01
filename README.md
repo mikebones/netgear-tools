@@ -329,13 +329,24 @@ value-free equivalent that is safe to commit.
   502 in ~10ms because the CGI backend behind it died. Only a management-plane
   restart clears it; retrying cannot. The data plane is unaffected throughout,
   so it is not an outage and does not justify an unplanned reboot.
-- **The MS510TXUP will not jump 1.0.5.15 -> 1.1.1.9.** The image uploads and
-  verifies, `show bootvar` shows the selection moving to it, and the switch
-  then boots the old image anyway and clears the selection - silently, twice.
-  The loader is 1.0.0.7 from 2021, so an intermediate release is the likely
-  requirement. Dual-image means this costs a reboot rather than a switch.
-  `scripts/ms510txup_firmware.py` does the upload; note it returns HTTP 404 on
-  success, so check `file_dualStatus`, not the status code.
+- **MS510TXUP firmware cannot be upgraded through the CGI - use the web UI.**
+  `scripts/ms510txup_firmware.py` gets most of the way and then does not
+  finish. The image transfers, the switch parses and stores its metadata
+  (`show bootvar` lists the right version, build date and filename),
+  `file_http_downloadStatus` reaches `success`, and the boot selection really
+  does move (`Not active*` on the CLI, not just the web UI's `nextAct`). The
+  switch then boots the old image anyway and silently clears the selection.
+
+  Ruled out, so nobody repeats them: it is not the version jump - 1.0.5.23,
+  same series, fails identically to 1.1.1.9. It is not a corrupt payload - the
+  multipart encoder round-trips a 12.3MB image byte-for-byte against a local
+  server. What is left is that the upload CGI never commits the image as
+  bootable, which fits it answering HTTP 404 on an otherwise "successful"
+  upload. Finding the missing step means more reverse engineering next to a
+  device that can be bricked, and the web UI does this in a few clicks.
+
+  Dual-image is what makes the whole thing safe to have attempted: the running
+  image is never written, so each failed attempt costs a reboot, not a switch.
 - `netgear_pr60x_static_route` field names are unverified.
 - PR60X `getAttachedDevices` returns `-32603`; `getCerts` / `getCertDetails`
   return `-32602`. All three take parameters not yet worked out.

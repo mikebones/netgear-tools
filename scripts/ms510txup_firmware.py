@@ -28,27 +28,31 @@ Usage:
 rebooting is a separate, deliberate act because it interrupts forwarding for
 everything attached to the switch.
 
-TWO THINGS OBSERVED ON A LIVE SWITCH, 2026-09-01:
+WHAT THIS SCRIPT DOES NOT DO, 2026-09-01: it does not actually complete an
+upgrade. The transfer works - the switch stores the image, reports the right
+version and build date in `show bootvar`, and file_http_downloadStatus reaches
+"success" - and the boot selection really does move. The switch then boots the
+old image and clears the selection, silently.
 
-The upload returns HTTP 404 and succeeds anyway. Check file_dualStatus rather
-than the status code - after a "404" the image was present and correct, and
-file_http_downloadStatus went uploading -> success a minute later.
+Ruled out: the version jump (1.0.5.23, same series, fails the same way as
+1.1.1.9) and a corrupt payload (the multipart body round-trips a 12.3MB image
+byte-for-byte against a local server). What remains is that the CGI never
+commits the image as bootable, consistent with it answering HTTP 404 on an
+upload it otherwise accepts.
 
-1.0.5.15 WILL NOT BOOT 1.1.1.9 DIRECTLY. The image uploads cleanly, the switch
-parses its header (show bootvar lists the version and date), and the boot
-selection genuinely moves - "Not active*" in show bootvar, confirmed via the
-CLI rather than just the web UI. It then boots the old image anyway and clears
-the selection, with nothing in the log. Tried twice. The loader here is 1.0.0.7
-and dates from 2021; the likely answer is a required intermediate release
-(1.0.5.23 or 1.1.0.x) rather than a bad upload. Dual-image is what makes this
-a non-event: the running image is never touched, so a refused upgrade costs a
-reboot, not a switch.
+USE THE WEB UI TO UPGRADE FIRMWARE. This script is kept because the upload
+mechanics are correct and documented, and because knowing exactly how far it
+gets is what rules the easy explanations out.
+
+The upload also returns HTTP 404 on success, so never trust the status code -
+check file_dualStatus.
 """
 import argparse
 import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 import uuid
 
@@ -88,8 +92,15 @@ def upload(sw, path, image_slot):
         headers={"Content-Type": "multipart/form-data; boundary=" + boundary,
                  "Content-Length": str(len(body)), **sw._headers()})
     # A 13MB write to an embedded switch is slow; do not give up early.
-    with sw.opener.open(req, timeout=600) as r:
-        return r.status, r.read().decode("utf-8", "replace")[:300]
+    #
+    # The CGI answers 404 on a SUCCESSFUL upload, so this cannot raise on a
+    # non-2xx the way a sane client would - the caller checks the device's own
+    # file_dualStatus instead. Only a transport failure is a real failure here.
+    try:
+        with sw.opener.open(req, timeout=600) as r:
+            return r.status, r.read().decode("utf-8", "replace")[:300]
+    except urllib.error.HTTPError as e:
+        return e.code, "(HTTP %d - expected on this firmware; verify via file_dualStatus)" % e.code
 
 
 def wait_for_completion(sw, attempts=90):
