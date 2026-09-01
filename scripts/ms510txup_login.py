@@ -135,6 +135,7 @@ class MS510:
         self.tabid = None
         self.exponent = None
         self.modulus = None
+        self.xsrf = None
         self.jar = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(self.jar))
@@ -197,8 +198,35 @@ class MS510:
     def get(self, cmd):
         return self._request("cgi/get.cgi?cmd=" + cmd)
 
+    def refresh_xsrf(self):
+        """Fetch the CSRF token that every write has to carry.
+
+        It arrives on home_home (and is refreshed by any reply that carries an
+        `xsrf` field), which is why the UI loads that page before anything
+        else.
+        """
+        self.xsrf = self.get("home_home").get("data", {}).get("xsrf")
+        return self.xsrf
+
     def set(self, cmd, fields):
-        return self._request("cgi/set.cgi?cmd=" + cmd, urllib.parse.urlencode(fields).encode())
+        """POST a write.
+
+        Bodies are wrapped exactly as the UI's formDataGet() builds them:
+
+            _ds=1 & <the form fields> & xsrf=<token> & _de=1
+
+        The _ds/_de sentinels bracket the payload and the token is mandatory;
+        without it the reply carries {"logout":...,"reason":"invalidCsrf"} and
+        the UI bounces to the login page.
+        """
+        if not self.xsrf:
+            self.refresh_xsrf()
+        body = "_ds=1&" + (urllib.parse.urlencode(fields) or "empty=1") +                "&xsrf=" + self.xsrf + "&_de=1"
+        res = self._request("cgi/set.cgi?cmd=" + cmd, body.encode())
+        # Any reply may rotate the token; keep up or the next write fails.
+        if isinstance(res, dict) and res.get("xsrf"):
+            self.xsrf = res["xsrf"]
+        return res
 
     def logout(self):
         try:

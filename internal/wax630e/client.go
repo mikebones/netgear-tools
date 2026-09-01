@@ -55,6 +55,26 @@ type Client struct {
 	mu       sync.Mutex
 	token    string
 	lastCall time.Time
+
+	// keepAlive holds the session open between calls. It defaults to false,
+	// which means every Call logs in and out again.
+	//
+	// That costs two extra requests per call and is still the right default:
+	// the AP has a hard cap on concurrent sessions, nothing in this package
+	// gets a teardown hook from terraform-plugin-framework, and a leaked
+	// session is not merely untidy - once they are gone, login returns 401 and
+	// the human is locked out of the web UI until they time out. A long-lived
+	// poller (an exporter) should set this true, since it owns its lifetime and
+	// can log out on shutdown.
+	keepAlive bool
+}
+
+// SetKeepAlive holds one session open across calls instead of logging in and
+// out per call. Callers that enable it are responsible for calling Logout.
+func (c *Client) SetKeepAlive(v bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.keepAlive = v
 }
 
 const minInterval = 300 * time.Millisecond
@@ -63,6 +83,12 @@ const minInterval = 300 * time.Millisecond
 const (
 	statusOK           = 0
 	statusUnauthorized = 100
+
+	// statusSessionsExhausted is returned by the LOGIN call when the AP has no
+	// free session slots. It holds only a handful and frees them on timeout, so
+	// a client that logs in per operation and never logs out locks the web UI
+	// out too. See keepAlive.
+	statusSessionsExhausted = 401
 )
 
 // errCodeInvalidConfig is returned when the query-by-example shape is not one
@@ -193,6 +219,12 @@ func (c *Client) login() error {
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return fmt.Errorf("decode login reply: %w (body %.200s)", err, raw)
 	}
+	if r.Status == statusSessionsExhausted {
+		return fmt.Errorf("the access point has no free session slots (status 401). It caps concurrent " +
+			"logins and frees them only on timeout, so this usually means sessions were leaked rather " +
+			"than that anything is wrong with the credentials. Wait for them to expire, or log out of " +
+			"the web UI")
+	}
 	if r.Status != statusOK {
 		return &APIError{Status: r.Status, ErrCode: r.Data.ErrCode, Message: r.Data.ErrMesg}
 	}
@@ -216,6 +248,10 @@ func (c *Client) Call(payload any, out any) error {
 	if c.token == "" {
 		if err := c.login(); err != nil {
 			return err
+		}
+		if !c.keepAlive {
+			// Release the slot however this call turns out.
+			defer c.logoutLocked()
 		}
 	}
 
@@ -327,6 +363,11 @@ func (c *Client) GetDeviceInfo() (DeviceInfo, error) {
 func (c *Client) Logout() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.logoutLocked()
+}
+
+// logoutLocked releases the session. Callers hold c.mu.
+func (c *Client) logoutLocked() error {
 	if c.token == "" {
 		return nil
 	}

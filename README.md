@@ -12,6 +12,7 @@ UIs. The one thing they all share is a `lhttpdsid` lighttpd session cookie.
 internal/pr60x/       router client   - JSON-RPC 2.0 over one endpoint
 internal/xs508tm/     switch client   - REST at /api/v1/
 internal/wax630e/     AP client       - query-by-example over one endpoint
+internal/ms510txup/   PoE switch client - signed CGI + RSA CSRF
 internal/provider/    Terraform provider, built on the clients
 cmd/pr60x-exporter/   Prometheus exporter for the router
 cmd/xs508tm-exporter/ Prometheus exporter for the switch
@@ -25,7 +26,7 @@ deploy/kubernetes/    exporter manifests
 | --- | --- | --- | --- | --- | --- | --- |
 | **PR60X** router | JSON-RPC 2.0 | 238 methods | verified | yes | deployed | 7 resources |
 | **XS508TM** switch | REST `/api/v1/` | 288 routes, 199 read | verified | yes | built | 2 resources |
-| **MS510TXUP** switch | signed CGI + RSA CSRF | 550 endpoints, 234 read | verified | script | — | — |
+| **MS510TXUP** switch | signed CGI + RSA CSRF | 550 endpoints, 234 read | verified | yes | — | 1 resource |
 | **WAX630E** AP | query-by-example | 27 API entries + templates | verified | yes | — | 1 resource |
 
 ## The four protocols
@@ -177,12 +178,14 @@ terraform {
 
 provider "netgear" {
   pr60x   = { endpoint = "https://192.168.1.1" }
-  xs508tm = { endpoint = "http://192.168.1.223" }
-  wax630e = { endpoint = "https://192.168.1.136" }
+  xs508tm   = { endpoint = "http://192.168.1.223" }
+  wax630e   = { endpoint = "https://192.168.1.136" }
+  ms510txup = { endpoint = "http://192.168.1.2" }
 }
 ```
 
-Passwords come from `PR60X_PASSWORD` / `XS508TM_PASSWORD` / `WAX630E_PASSWORD`. These devices have
+Passwords come from `PR60X_PASSWORD` / `XS508TM_PASSWORD` / `WAX630E_PASSWORD` /
+`MS510TXUP_PASSWORD`. These devices have
 no API-token concept, so that is the credential owning the hardware — source it
 from a secret store, not a `.tf` file.
 
@@ -280,7 +283,7 @@ Python, stdlib only, no dependencies.
 | `set_dhcp_dns.py` | Sets DHCP option 6, with `--show` and `--restore`. |
 | `schemagen.py` | Reduces a discovery dump to the value-free `schema.json`. |
 | `xs508tm_discover.py` | Sweeps every XS508TM route safe to GET; refuses parameterised or state-changing ones. |
-| `ms510txup_login.py` | Full MS510TXUP client: URL signing, password obfuscation, the login handshake and the RSA CSRF header. Stdlib only - PKCS#1 v1.5 is implemented inline. |
+| `ms510txup_login.py` | Python reference for the MS510TXUP: URL signing, password obfuscation, the login handshake and the RSA CSRF header. Faster to iterate against than the Go client. Stdlib only - PKCS#1 v1.5 is implemented inline. |
 | `*_routes.json`, `*_endpoints.json`, `wax630e_api.json` | The recovered API surfaces. |
 
 Discovery dumps and device running-configs are **gitignored**: they carry LAN
@@ -289,9 +292,16 @@ value-free equivalent that is safe to commit.
 
 ## Known gaps
 
-- **MS510TXUP has no Go client or Terraform resources yet.** The protocol is
-  fully worked out and `scripts/ms510txup_login.py` drives it, but its syslog
-  (`log_remote`) and DNS (`sys_dnsConf`) are not yet managed declaratively.
+- **The MS510TXUP applies configuration without starting the service.** Both
+  SNTP and the syslog relay accept their settings, report them back correctly
+  and show the collector as Active - and then do nothing. `reqs` stays 0 with
+  no SNTP log lines, and the syslog relay's own `msgReceived` stays 0 while
+  `log_ram` is happily recording. It most likely needs a reboot to start those
+  services, which on this switch cuts PoE to whatever it powers.
+- **Its clock is three years stale** as a result: no battery-backed RTC and
+  SNTP shipped off, so it stamps messages Jan 2023. The timezone setting *does*
+  apply immediately, which makes this easy to mistake for a working clock.
+- **MS510TXUP DNS (`sys_dnsConf`) is not modelled yet** - still 8.8.8.8.
 - **WAX630E reads beyond the transcribed templates.** Auth and the syslog and
   device-info shapes are verified live; the station and radio templates in the
   bundle are fragments of larger payloads and still return `err_code 28`.

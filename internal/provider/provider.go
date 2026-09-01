@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"netgear-tools/internal/ms510txup"
 	"netgear-tools/internal/pr60x"
 	"netgear-tools/internal/wax630e"
 	"netgear-tools/internal/xs508tm"
@@ -26,9 +27,10 @@ type NetgearProvider struct {
 // manages the switch should not have to invent router credentials. Resources
 // check for nil and name the missing block rather than panicking.
 type clients struct {
-	PR60X   *pr60x.Client
-	XS508TM *xs508tm.Client
-	WAX630E *wax630e.Client
+	PR60X     *pr60x.Client
+	XS508TM   *xs508tm.Client
+	WAX630E   *wax630e.Client
+	MS510TXUP *ms510txup.Client
 }
 
 type deviceModel struct {
@@ -39,9 +41,10 @@ type deviceModel struct {
 }
 
 type netgearProviderModel struct {
-	PR60X   *deviceModel `tfsdk:"pr60x"`
-	XS508TM *deviceModel `tfsdk:"xs508tm"`
-	WAX630E *deviceModel `tfsdk:"wax630e"`
+	PR60X     *deviceModel `tfsdk:"pr60x"`
+	XS508TM   *deviceModel `tfsdk:"xs508tm"`
+	WAX630E   *deviceModel `tfsdk:"wax630e"`
+	MS510TXUP *deviceModel `tfsdk:"ms510txup"`
 }
 
 func New(version string) func() provider.Provider {
@@ -90,9 +93,10 @@ func (p *NetgearProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 			"account, Insight subscription or cloud dependency. Each device family is configured in its own " +
 			"attribute and has its own resource prefix (netgear_pr60x_*, netgear_xs508tm_*).",
 		Attributes: map[string]schema.Attribute{
-			"pr60x":   deviceAttrs("the PR60X router", "https://192.168.1.1", "PR60X"),
-			"xs508tm": deviceAttrs("an XS-series smart switch", "http://192.168.1.223", "XS508TM"),
-			"wax630e": deviceAttrs("a WAX6-series access point", "https://192.168.1.136", "WAX630E"),
+			"pr60x":     deviceAttrs("the PR60X router", "https://192.168.1.1", "PR60X"),
+			"xs508tm":   deviceAttrs("an XS-series smart switch", "http://192.168.1.223", "XS508TM"),
+			"wax630e":   deviceAttrs("a WAX6-series access point", "https://192.168.1.136", "WAX630E"),
+			"ms510txup": deviceAttrs("an MS510TXUP smart switch", "http://192.168.1.2", "MS510TXUP"),
 		},
 	}
 }
@@ -150,11 +154,22 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 		c.WAX630E = client
 	}
 
-	if c.PR60X == nil && c.XS508TM == nil && c.WAX630E == nil {
+	// The MS510TXUP has a single admin password and no username concept, so
+	// the username from resolve() is ignored here.
+	if endpoint, _, password, insecure := resolve(data.MS510TXUP, "MS510TXUP", "http://192.168.1.2"); password != "" {
+		client, err := ms510txup.NewClient(endpoint, password, insecure)
+		if err != nil {
+			resp.Diagnostics.AddError("Could not create MS510TXUP client", err.Error())
+			return
+		}
+		c.MS510TXUP = client
+	}
+
+	if c.PR60X == nil && c.XS508TM == nil && c.WAX630E == nil && c.MS510TXUP == nil {
 		resp.Diagnostics.AddError(
 			"No NETGEAR device configured",
 			"Supply a password for at least one device, either in its provider attribute or via "+
-				"PR60X_PASSWORD / XS508TM_PASSWORD / WAX630E_PASSWORD. Sourcing these from Vault is preferred so the "+
+				"PR60X_PASSWORD / XS508TM_PASSWORD / WAX630E_PASSWORD / MS510TXUP_PASSWORD. Sourcing these from Vault is preferred so the "+
 				"credential never lands in state or version control.",
 		)
 		return
@@ -198,6 +213,8 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewSwitchSyslogServerResource,
 		// WAX6-series access point
 		NewAPSyslogResource,
+		// MS510TXUP switch
+		NewMS510SyslogServerResource,
 	}
 }
 
