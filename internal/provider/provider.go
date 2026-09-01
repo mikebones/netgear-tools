@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"netgear-tools/internal/pr60x"
+	"netgear-tools/internal/wax630e"
 	"netgear-tools/internal/xs508tm"
 )
 
@@ -27,6 +28,7 @@ type NetgearProvider struct {
 type clients struct {
 	PR60X   *pr60x.Client
 	XS508TM *xs508tm.Client
+	WAX630E *wax630e.Client
 }
 
 type deviceModel struct {
@@ -39,6 +41,7 @@ type deviceModel struct {
 type netgearProviderModel struct {
 	PR60X   *deviceModel `tfsdk:"pr60x"`
 	XS508TM *deviceModel `tfsdk:"xs508tm"`
+	WAX630E *deviceModel `tfsdk:"wax630e"`
 }
 
 func New(version string) func() provider.Provider {
@@ -89,6 +92,7 @@ func (p *NetgearProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 		Attributes: map[string]schema.Attribute{
 			"pr60x":   deviceAttrs("the PR60X router", "https://192.168.1.1", "PR60X"),
 			"xs508tm": deviceAttrs("an XS-series smart switch", "http://192.168.1.223", "XS508TM"),
+			"wax630e": deviceAttrs("a WAX6-series access point", "https://192.168.1.136", "WAX630E"),
 		},
 	}
 }
@@ -137,11 +141,20 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 		c.XS508TM = client
 	}
 
-	if c.PR60X == nil && c.XS508TM == nil {
+	if endpoint, username, password, insecure := resolve(data.WAX630E, "WAX630E", "https://192.168.1.136"); password != "" {
+		client, err := wax630e.NewClient(endpoint, username, password, insecure)
+		if err != nil {
+			resp.Diagnostics.AddError("Could not create WAX630E client", err.Error())
+			return
+		}
+		c.WAX630E = client
+	}
+
+	if c.PR60X == nil && c.XS508TM == nil && c.WAX630E == nil {
 		resp.Diagnostics.AddError(
 			"No NETGEAR device configured",
 			"Supply a password for at least one device, either in its provider attribute or via "+
-				"PR60X_PASSWORD / XS508TM_PASSWORD. Sourcing these from Vault is preferred so the "+
+				"PR60X_PASSWORD / XS508TM_PASSWORD / WAX630E_PASSWORD. Sourcing these from Vault is preferred so the "+
 				"credential never lands in state or version control.",
 		)
 		return
@@ -183,6 +196,8 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		// XS-series switch
 		NewSwitchIGMPSnoopingResource,
 		NewSwitchSyslogServerResource,
+		// WAX6-series access point
+		NewAPSyslogResource,
 	}
 }
 

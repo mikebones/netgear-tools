@@ -11,6 +11,7 @@ UIs. The one thing they all share is a `lhttpdsid` lighttpd session cookie.
 ```
 internal/pr60x/       router client   - JSON-RPC 2.0 over one endpoint
 internal/xs508tm/     switch client   - REST at /api/v1/
+internal/wax630e/     AP client       - query-by-example over one endpoint
 internal/provider/    Terraform provider, built on the clients
 cmd/pr60x-exporter/   Prometheus exporter for the router
 cmd/xs508tm-exporter/ Prometheus exporter for the switch
@@ -25,7 +26,7 @@ deploy/kubernetes/    exporter manifests
 | **PR60X** router | JSON-RPC 2.0 | 238 methods | verified | yes | deployed | 7 resources |
 | **XS508TM** switch | REST `/api/v1/` | 288 routes, 199 read | verified | yes | built | 2 resources |
 | **MS510TXUP** switch | signed CGI | 550 endpoints | verified | partial | — | — |
-| **WAX630E** AP | `/socketCommunication` | 27 API entries | not yet | — | — | — |
+| **WAX630E** AP | query-by-example | 27 API entries + templates | verified | yes | — | 1 resource |
 
 ## The four protocols
 
@@ -105,12 +106,44 @@ needs the CGI API.
 
 ### WAX630E access point
 
-Shares the router's architecture: `POST /socketCommunication`, `lhttpdsid`
-cookie. Auth differs — a lowercase **`security`** header whose value is
-`base64decode(cookie "ssid")`. 27 API entries recovered including `postSyslog`,
-`getMonitoring`, `getStatistics` and `getRadioInfo`. The login payload shape is
-still unknown; the endpoint answers `{"status":100}` to a wrong body, so at
-least it fails informatively.
+Shares the router's transport - `POST /socketCommunication`, `lhttpdsid`
+cookie - and almost nothing else.
+
+**Login is not in the API map**, which is what makes it hard to find. The
+bundle's 27-entry map has `logout` and `isloggedin` but no login, and the one
+`/login` route in the whole bundle is `customerLogin` - the NETGEAR *cloud*
+account modal, taking `{email,password}` from `#loginEmail`. The local admin
+login is an ordinary query-by-example POST that carries a `time` header instead
+of the usual `security` one:
+
+```
+POST /socketCommunication          time: <Date.toString(), +45min, "(Zone)" stripped>
+  {"system":{"basicSettings":{"adminName":"admin","adminPasswd":"..."}}}
+  -> {"status":0,...}              and the token in the `security` RESPONSE header
+```
+
+The web UI then stores `btoa(token)` in a **non-HttpOnly `ssid` cookie** and
+sends `atob(cookie)` back as the `security` request header - so for a real
+client the response header value *is* the request header value and the base64
+round trip can be skipped entirely.
+
+Everything after that is **query-by-example**: POST the JSON shape you want
+with empty values and the device fills it in; the same shape with values set is
+the write. There is no method name anywhere, and an invented shape is rejected,
+so the templates in `client.go` are transcribed from the bundle rather than
+guessed.
+
+Two status codes look alike and are not:
+
+- **`status: 100`** - not authenticated. The UI turns this into a bounce to
+  `AP_login`. Every wrong guess at the login shape returns it, which is what
+  made the login look unreachable for so long.
+- **`status: 1, err_code: 28 "Invalid configuration"`** - authenticated fine,
+  payload shape unrecognised.
+
+Watch the lockout: more than two consecutive bad passwords disables login for a
+firmware-chosen interval, returned as `err_code 26` with a `time` in minutes.
+Probe the shape, not the password.
 
 ## Terraform provider
 
@@ -125,10 +158,11 @@ terraform {
 provider "netgear" {
   pr60x   = { endpoint = "https://192.168.1.1" }
   xs508tm = { endpoint = "http://192.168.1.223" }
+  wax630e = { endpoint = "https://192.168.1.136" }
 }
 ```
 
-Passwords come from `PR60X_PASSWORD` / `XS508TM_PASSWORD`. These devices have
+Passwords come from `PR60X_PASSWORD` / `XS508TM_PASSWORD` / `WAX630E_PASSWORD`. These devices have
 no API-token concept, so that is the credential owning the hardware — source it
 from a secret store, not a `.tf` file.
 
@@ -237,7 +271,13 @@ value-free equivalent that is safe to commit.
 
 - **MS510TXUP CGI authorization** — login works, data calls 404. This is the
   blocker for its syslog, its DNS setting, and putting its config in Terraform.
-- **WAX630E login payload** — everything else about its protocol is mapped.
+- **WAX630E reads beyond the transcribed templates.** Auth and the syslog and
+  device-info shapes are verified live; the station and radio templates in the
+  bundle are fragments of larger payloads and still return `err_code 28`.
+- **The XS508TM management plane wedges and stays wedged** — lighttpd answering
+  502 in ~10ms because the CGI backend behind it died. Only a management-plane
+  restart clears it; retrying cannot. The data plane is unaffected throughout,
+  so it is not an outage and does not justify an unplanned reboot.
 - `netgear_pr60x_static_route` field names are unverified.
 - PR60X `getAttachedDevices` returns `-32603`; `getCerts` / `getCertDetails`
   return `-32602`. All three take parameters not yet worked out.

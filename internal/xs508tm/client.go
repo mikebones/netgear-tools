@@ -119,6 +119,21 @@ func isTransient(err error) bool {
 
 // do issues one request, retrying with backoff while the management server is
 // returning a transient failure.
+//
+// When the retries run out the error is rewrapped, because "502" on its own
+// sends you looking for a bug in the request. There are two different 502s
+// here and they need different responses:
+//
+//   - a slow 502 while the embedded web server is briefly overloaded, which is
+//     what the backoff above exists for, and
+//   - an immediate 502 - lighttpd answering in ~10ms because the CGI backend
+//     behind it has died outright and is not coming back on its own.
+//
+// The second survives any amount of retrying and needs the switch's management
+// plane restarted. Note that the data plane is unaffected in both cases:
+// switching continues normally while the web UI is entirely unreachable, so a
+// wedged management plane is not an outage and does not justify an unplanned
+// reboot of a switch carrying live traffic.
 func (c *Client) do(method, path string, body, out any) error {
 	var err error
 	backoff := 750 * time.Millisecond
@@ -130,8 +145,24 @@ func (c *Client) do(method, path string, body, out any) error {
 		time.Sleep(backoff)
 		backoff *= 2
 	}
-	return err
+	return &WedgedError{Path: path, Err: err}
 }
+
+// WedgedError reports that the management plane stayed unavailable across
+// every retry.
+type WedgedError struct {
+	Path string
+	Err  error
+}
+
+func (e *WedgedError) Error() string {
+	return fmt.Sprintf("%s: the switch management plane did not recover after %d retries (%v). "+
+		"If it is answering immediately rather than hanging, the CGI backend behind lighttpd has died "+
+		"and only a management-plane restart will clear it; the data plane is unaffected, so this can "+
+		"wait for a maintenance window.", e.Path, transientRetries, e.Err)
+}
+
+func (e *WedgedError) Unwrap() error { return e.Err }
 
 func (c *Client) doOnce(method, path string, body, out any) error {
 	if since := time.Since(c.lastCall); since < minInterval {
