@@ -16,11 +16,16 @@ WHY THIS IS SAFE ENOUGH TO AUTOMATE
 The switch is dual-image and this script always writes the INACTIVE slot,
 refusing to touch the running one. If the new image does not come up, the old
 one is still there. It also saves the running config first, because the CLI
-will otherwise offer to do it mid-reload behind an interactive prompt - and
-because on this switch the REST API writes running-config only, so a
-Terraform-applied setting is one unsaved reboot away from vanishing. That is
-not hypothetical: this switch was found with `logging host` and `set igmp` in
-running-config and nothing in startup-config.
+otherwise offers to do it mid-reload behind an interactive prompt, and an
+unanswered prompt in the middle of a teardown is a bad place to be.
+
+To correct something stated here earlier: the REST API DOES persist to
+startup-config. Verified by writing a syslog severity over the API and diffing
+`show running-config` against `show startup-config` - both changed together.
+The "system has unsaved changes" seen during this work came from CLI actions
+(`application stop/start`, image activation), not from Terraform. Saving here
+is cheap insurance for whatever else touched the box, not a workaround for the
+provider.
 
 WHY SSH RATHER THAN THE REST API
 
@@ -135,8 +140,8 @@ def main():
         target = "image1" if active == "image2" else "image2"
         print("  writing %s (the inactive slot)" % target)
 
-        # Save first: reload would otherwise prompt for it mid-teardown, and
-        # anything applied via the REST API lives only in running-config.
+        # Save first so `reload` does not stop on its save prompt mid-teardown.
+        # (The REST API persists on its own - see the module docstring.)
         save_config(cli)
 
         out = cli.send("copy %s %s" % (args.url, target), idle=6.0)
