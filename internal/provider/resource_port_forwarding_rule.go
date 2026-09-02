@@ -216,10 +216,48 @@ func (r *portForwardingRuleResource) Read(ctx context.Context, req resource.Read
 		return
 	}
 
-	rule, err := r.client.GetPortForwardingRuleByID(state.ID.ValueInt64())
+	// THE DEVICE RENUMBERS RULE IDS WHEN ANY RULE IS DELETED.
+	//
+	// Ids are positional, not stable identifiers: delete rule 2 and every rule
+	// after it shifts down one. A resource that trusts its stored id therefore
+	// finds either nothing or, far worse, a DIFFERENT rule sitting at that
+	// position. Confirmed live on 2026-09-01 - removing an SSH forward moved
+	// WG-KUBE from 9 to 8, and a plan then proposed *creating* WG-KUBE again,
+	// which would have produced a duplicate forward.
+	//
+	// So the id is treated as a hint and the natural key as the truth: look at
+	// the id first, and if what is there is not this rule, find it by name and
+	// adopt its new id.
+	all, err := r.client.ListPortForwardingRules()
 	if err != nil {
-		resp.Diagnostics.AddError("Could not read port-forwarding rule", err.Error())
+		resp.Diagnostics.AddError("Could not read port-forwarding rules", err.Error())
 		return
+	}
+
+	want := state.toAPI()
+
+	// On import only the id is set, so there is no natural key to match on
+	// yet - the id is all we have and all we should use.
+	byIDOnly := state.ExternalService.IsNull() || state.ExternalService.ValueString() == ""
+
+	var rule *pr60x.PortForwardingRule
+	for i := range all {
+		if all[i].ID != state.ID.ValueInt64() {
+			continue
+		}
+		if byIDOnly || matches(all[i], want) {
+			rule = &all[i]
+		}
+		break
+	}
+	// The id pointed at nothing, or at a different rule - find ours by name.
+	if rule == nil && !byIDOnly {
+		for i := range all {
+			if matches(all[i], want) {
+				rule = &all[i]
+				break
+			}
+		}
 	}
 	if rule == nil {
 		resp.State.RemoveResource(ctx)
