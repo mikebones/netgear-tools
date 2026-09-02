@@ -216,6 +216,7 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		// MS510TXUP switch
 		NewMS510SyslogServerResource,
 		NewMS510SNTPResource,
+		NewMS510DNSResource,
 	}
 }
 

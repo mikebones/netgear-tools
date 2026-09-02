@@ -606,7 +606,9 @@ func (c *Client) DeleteSNTPServer(pri int) error {
 // DNSConfig is the switch's resolver configuration.
 type DNSConfig struct {
 	State int `json:"state"`
-	DNS   []struct {
+	// Hostname is the default domain appended to unqualified names.
+	Hostname string `json:"hostname"`
+	DNS      []struct {
 		IP   string `json:"ip"`
 		Pref int    `json:"pref"`
 		Idx  int    `json:"idx"`
@@ -617,6 +619,28 @@ func (c *Client) GetDNS() (DNSConfig, error) {
 	var d DNSConfig
 	err := c.Get("sys_dnsConf", &d)
 	return d, err
+}
+
+// SetDNSState enables or disables the resolver and sets the default domain.
+// The server list is managed separately - this write does not touch it.
+func (c *Client) SetDNSState(enabled bool, hostname string) error {
+	v := "0"
+	if enabled {
+		v = "1"
+	}
+	return c.Set("sys_dnsConf", []Field{{"state", v}, {"hostname", hostname}})
+}
+
+// AddDNSServer appends a resolver. The switch assigns the index and
+// preference itself; there is no way to ask for a particular slot.
+func (c *Client) AddDNSServer(ip string) error {
+	return c.Set("sys_dnsConfAdd", []Field{{"ip", ip}})
+}
+
+// DeleteDNSServer removes a resolver by the row index the switch reported in
+// GetDNS - NOT by address, and not by position in the list.
+func (c *Client) DeleteDNSServer(idx int) error {
+	return c.Set("sys_dnsConfDel", []Field{{"selEntry", fmt.Sprint(idx)}})
 }
 
 // SysInfo is the identity and uptime block.
