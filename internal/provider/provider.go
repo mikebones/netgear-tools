@@ -217,6 +217,7 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewMS510SyslogServerResource,
 		NewMS510SNTPResource,
 		NewMS510DNSResource,
+		NewMS510VLANResource,
 	}
 }
 

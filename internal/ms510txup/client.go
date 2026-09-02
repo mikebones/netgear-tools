@@ -601,6 +601,90 @@ func (c *Client) DeleteSNTPServer(pri int) error {
 	return c.Set("time_sntpDel", []Field{{"selEntry", fmt.Sprint(pri)}})
 }
 
+// --- VLANs -----------------------------------------------------------------
+
+// VLANPortState is how a port participates in one VLAN. The values are the
+// firmware's own, taken from the membership page's hidden inputs.
+const (
+	VLANExcluded = 0
+	VLANUntagged = 1
+	VLANTagged   = 2
+)
+
+// vlanPanelPorts is how many entries the membership panel carries: 10 physical
+// ports followed by 8 LAGs. A write has to send every one of them, because the
+// UI serialises the whole panel rather than a delta.
+const vlanPanelPorts = 18
+
+// VLAN is one VLAN as the switch reports it.
+type VLAN struct {
+	ID   int    `json:"vlan"`
+	Name string `json:"name"`
+	Type int    `json:"type"`
+}
+
+type vlanConf struct {
+	VLANs []VLAN `json:"vlans"`
+}
+
+func (c *Client) ListVLANs() ([]VLAN, error) {
+	var cfg vlanConf
+	err := c.Get("vlan_conf", &cfg)
+	return cfg.VLANs, err
+}
+
+func (c *Client) CreateVLAN(id int, name string) error {
+	return c.Set("vlan_confAdd", []Field{{"vlan", fmt.Sprint(id)}, {"name", name}})
+}
+
+// DeleteVLAN removes a VLAN. The row key is the VLAN id.
+func (c *Client) DeleteVLAN(id int) error {
+	return c.Set("vlan_confDel", []Field{{"selEntry", fmt.Sprint(id)}})
+}
+
+type vlanMembership struct {
+	SelVid int `json:"selVid"`
+	Ports  []struct {
+		State int `json:"state"`
+	} `json:"ports"`
+}
+
+// GetVLANMembership returns per-port state for one VLAN, indexed from 0.
+//
+// Note the query string: the membership read is the only call here that takes
+// a parameter besides cmd, and it must be appended as a separate &vlan= rather
+// than folded into the cmd value.
+func (c *Client) GetVLANMembership(id int) ([]int, error) {
+	var m vlanMembership
+	if err := c.Get(fmt.Sprintf("vlan_membership&vlan=%d", id), &m); err != nil {
+		return nil, err
+	}
+	out := make([]int, 0, len(m.Ports))
+	for _, p := range m.Ports {
+		out = append(out, p.State)
+	}
+	return out, nil
+}
+
+// SetVLANMembership writes per-port state for one VLAN.
+//
+// It deliberately does NOT touch PVID. The web UI sends a second request to
+// vlan_intf when a port's PVID should change; omitting that leaves every port
+// with its existing PVID, so a tagged VLAN can be added without disturbing the
+// untagged traffic already on the wire. That is the whole reason this is safe
+// to run against a live switch.
+func (c *Client) SetVLANMembership(id int, states []int) error {
+	fields := []Field{{"vlan", fmt.Sprint(id)}}
+	for i := 0; i < vlanPanelPorts; i++ {
+		state := VLANExcluded
+		if i < len(states) {
+			state = states[i]
+		}
+		fields = append(fields, Field{fmt.Sprintf("vlan_%d", i), fmt.Sprint(state)})
+	}
+	return c.Set("vlan_membership", fields)
+}
+
 // --- misc -------------------------------------------------------------------
 
 // DNSConfig is the switch's resolver configuration.
