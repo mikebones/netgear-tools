@@ -228,9 +228,32 @@ func (c *Client) login() error {
 	if r.Status != statusOK {
 		return &APIError{Status: r.Status, ErrCode: r.Data.ErrCode, Message: r.Data.ErrMesg}
 	}
-	token := hdr.Get("security")
+	// WHERE THE TOKEN LIVES DEPENDS ON THE FIRMWARE.
+	//
+	// V10.1.5.1 returned it in the `security` RESPONSE HEADER. V10.8.10.10
+	// moved it into the body as system.security_token - a SIBLING of
+	// basicSettings, not inside it - and stopped sending the header. Accept
+	// either, newest first.
+	//
+	// Getting this wrong is expensive rather than merely broken: the AP has
+	// already created the session by the time the token is read, so a client
+	// that errors out here holds a slot it cannot release. Repeat that a few
+	// times and the AP runs out and answers 401 to everything, including the
+	// browser - which is exactly what happened after this upgrade.
+	var tokenBody struct {
+		System struct {
+			SecurityToken string `json:"security_token"`
+		} `json:"system"`
+	}
+	_ = json.Unmarshal(raw, &tokenBody)
+
+	token := tokenBody.System.SecurityToken
 	if token == "" {
-		return fmt.Errorf("login succeeded but no security header was returned")
+		token = hdr.Get("security")
+	}
+	if token == "" {
+		return fmt.Errorf("login succeeded but returned no token in either the security " +
+			"header or system.security_token; the session is now held on the AP and cannot be released")
 	}
 	c.token = token
 	return nil

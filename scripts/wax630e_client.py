@@ -84,9 +84,25 @@ class WAX630E:
             {"time": _js_time()})
         if str(body.get("status")) != "0":
             raise RuntimeError("login failed: %s" % json.dumps(body)[:300])
-        self.token = hdrs.get("security") or hdrs.get("Security")
+        # WHERE THE TOKEN LIVES DEPENDS ON THE FIRMWARE.
+        #
+        # V10.1.5.1 returned it in the `security` RESPONSE HEADER. V10.8.10.10
+        # moved it into the body as system.security_token - a SIBLING of
+        # basicSettings, not inside it - and
+        # stopped sending the header at all. Accept either, newest first.
+        #
+        # This matters more than it looks: the old client treated a missing
+        # header as an error AFTER the AP had already created the session, and
+        # had no token to log out with - so every attempt leaked a slot until
+        # the AP ran out and started answering 401 to everyone, including the
+        # browser.
+        self.token = (body.get("system", {}).get("security_token")
+                      or hdrs.get("security") or hdrs.get("Security"))
         if not self.token:
-            raise RuntimeError("login reported success but returned no security header")
+            raise RuntimeError(
+                "login reported success but returned no token in either the "
+                "security header or system.basicSettings.security_token - the "
+                "session is now held on the AP and cannot be released")
         return body
 
     def call(self, payload):
