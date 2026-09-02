@@ -26,7 +26,7 @@ deploy/kubernetes/    exporter manifests
 | --- | --- | --- | --- | --- | --- | --- |
 | **PR60X** router | JSON-RPC 2.0 | 238 methods | verified | yes | deployed | 7 resources |
 | **XS508TM** switch | REST `/api/v1/` | 288 routes, 199 read | verified | yes | built | 2 resources |
-| **MS510TXUP** switch | signed CGI + RSA CSRF | 550 endpoints, 234 read | verified | yes | — | 1 resource |
+| **MS510TXUP** switch | signed CGI + RSA CSRF | 550 endpoints, 234 read | verified | yes | — | 3 resources |
 | **WAX630E** AP | query-by-example | 27 API entries + templates | verified | yes | — | 1 resource |
 
 ## The four protocols
@@ -292,6 +292,8 @@ Python, stdlib only, no dependencies.
 | `set_dhcp_dns.py` | Sets DHCP option 6, with `--show` and `--restore`. |
 | `schemagen.py` | Reduces a discovery dump to the value-free `schema.json`. |
 | `xs508tm_discover.py` | Sweeps every XS508TM route safe to GET; refuses parameterised or state-changing ones. |
+| `tftp_serve.py` | Read-only stdlib TFTP server. Exists because the MS510TXUP's HTTP firmware upload produces an unbootable image and TFTP does not. |
+| `ms510txup_firmware.py` | Drives an MS510TXUP upgrade over TFTP, writing the inactive image slot. |
 | `ms510txup_login.py` | Python reference for the MS510TXUP: URL signing, password obfuscation, the login handshake and the RSA CSRF header. Faster to iterate against than the Go client. Stdlib only - PKCS#1 v1.5 is implemented inline. |
 | `*_routes.json`, `*_endpoints.json`, `wax630e_api.json` | The recovered API surfaces. |
 
@@ -329,24 +331,21 @@ value-free equivalent that is safe to commit.
   502 in ~10ms because the CGI backend behind it died. Only a management-plane
   restart clears it; retrying cannot. The data plane is unaffected throughout,
   so it is not an outage and does not justify an unplanned reboot.
-- **MS510TXUP firmware cannot be upgraded through the CGI - use the web UI.**
-  `scripts/ms510txup_firmware.py` gets most of the way and then does not
-  finish. The image transfers, the switch parses and stores its metadata
-  (`show bootvar` lists the right version, build date and filename),
-  `file_http_downloadStatus` reaches `success`, and the boot selection really
-  does move (`Not active*` on the CLI, not just the web UI's `nextAct`). The
-  switch then boots the old image anyway and silently clears the selection.
-
-  Ruled out, so nobody repeats them: it is not the version jump - 1.0.5.23,
-  same series, fails identically to 1.1.1.9. It is not a corrupt payload - the
-  multipart encoder round-trips a 12.3MB image byte-for-byte against a local
-  server. What is left is that the upload CGI never commits the image as
-  bootable, which fits it answering HTTP 404 on an otherwise "successful"
-  upload. Finding the missing step means more reverse engineering next to a
-  device that can be bricked, and the web UI does this in a few clicks.
-
-  Dual-image is what makes the whole thing safe to have attempted: the running
-  image is never written, so each failed attempt costs a reboot, not a switch.
+- **MS510TXUP firmware: use TFTP, never the HTTP upload CGI.** Both transfer
+  the image and both report success; only TFTP produces one the switch will
+  boot. Via `cgi-bin/httpupload.cgi` the image lands, its metadata parses
+  (`show bootvar` shows the right version and build date) and the boot
+  selection moves - then the loader boots the old image and silently clears
+  the selection. Reproduced with two images including a same-series one, and
+  with the multipart encoder verified byte-for-byte against a local server, so
+  the transfer is not the problem: the commit never happens. Via
+  `file_tftp_download` it just works - verified 1.0.5.15 -> 1.0.5.23 -> 1.1.1.9
+  on a live switch. `scripts/tftp_serve.py` is a stdlib read-only TFTP server
+  for exactly this.
+- **The MS510TXUP upgrade resets some configuration.** Going to 1.1.1.9
+  dropped the remote syslog host and replaced the SNTP server with three vendor
+  defaults; DNS and the clock source survived. Re-run Terraform after any
+  upgrade rather than assuming - it detected both immediately.
 - `netgear_pr60x_static_route` field names are unverified.
 - PR60X `getAttachedDevices` returns `-32603`; `getCerts` / `getCertDetails`
   return `-32602`. All three take parameters not yet worked out.
