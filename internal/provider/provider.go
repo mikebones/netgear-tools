@@ -94,7 +94,7 @@ func (p *NetgearProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 			"attribute and has its own resource prefix (netgear_pr60x_*, netgear_xs508tm_*).",
 		Attributes: map[string]schema.Attribute{
 			"pr60x":     deviceAttrs("the PR60X router", "https://192.168.1.1", "PR60X"),
-			"xs508tm":   deviceAttrs("an XS-series smart switch", "http://192.168.1.223", "XS508TM"),
+			"xs508tm":   deviceAttrs("an XS-series smart switch", "http://192.168.1.3", "XS508TM"),
 			"wax630e":   deviceAttrs("a WAX6-series access point", "https://192.168.1.136", "WAX630E"),
 			"ms510txup": deviceAttrs("an MS510TXUP smart switch", "http://192.168.1.2", "MS510TXUP"),
 		},
@@ -134,15 +134,17 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 			return
 		}
 		c.PR60X = client
+		registerCleanup(client.Logout)
 	}
 
-	if endpoint, username, password, insecure := resolve(data.XS508TM, "XS508TM", "http://192.168.1.223"); password != "" {
+	if endpoint, username, password, insecure := resolve(data.XS508TM, "XS508TM", "http://192.168.1.3"); password != "" {
 		client, err := xs508tm.NewClient(endpoint, username, password, insecure)
 		if err != nil {
 			resp.Diagnostics.AddError("Could not create XS508TM client", err.Error())
 			return
 		}
 		c.XS508TM = client
+		registerCleanup(client.Logout)
 	}
 
 	if endpoint, username, password, insecure := resolve(data.WAX630E, "WAX630E", "https://192.168.1.136"); password != "" {
@@ -152,6 +154,7 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 			return
 		}
 		c.WAX630E = client
+		registerCleanup(func() { _ = client.Logout() })
 	}
 
 	// The MS510TXUP has a single admin password and no username concept, so
@@ -163,6 +166,7 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 			return
 		}
 		c.MS510TXUP = client
+		registerCleanup(func() { _ = client.Logout() })
 	}
 
 	if c.PR60X == nil && c.XS508TM == nil && c.WAX630E == nil && c.MS510TXUP == nil {
@@ -213,6 +217,7 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewSwitchSyslogServerResource,
 		// WAX6-series access point
 		NewAPSyslogResource,
+		NewAPNetworkResource,
 		// MS510TXUP switch
 		NewMS510SyslogServerResource,
 		NewMS510SNTPResource,

@@ -342,6 +342,58 @@ func (c *Client) SetSyslog(s SyslogSettings) error {
 	return c.Call(syslogPayload(s), nil)
 }
 
+// --- network addressing -----------------------------------------------------
+
+// NetworkSettings is the AP's management addressing.
+//
+// Every field is a string on the wire, including the numeric ones.
+//
+// A WARNING THAT IS EASY TO LEARN THE HARD WAY: the static fields are
+// independent of DHCPClientStatus and ship as FACTORY DEFAULTS - 192.168.0.100
+// with a 192.168.0.1 gateway. Turning DHCP off without setting them in the
+// same write drops the AP onto a different subnet and out of reach. Always
+// send the whole struct.
+type NetworkSettings struct {
+	DeviceMode       string `json:"deviceMode"`
+	DHCPClientStatus string `json:"dhcpClientStatus"` // "1" DHCP, "0" static
+	IPAddr           string `json:"ipAddr"`
+	NetmaskAddr      string `json:"netmaskAddr"`
+	GatewayAddr      string `json:"gatewayAddr"`
+	PrimaryDNS       string `json:"priDnsAddr"`
+	SecondaryDNS     string `json:"sndDnsAddr"`
+	IntegrityCheck   string `json:"networkIntegralityCheck"`
+	UntaggedVLANOn   string `json:"untaggedVlanStatus"`
+	UntaggedVLANID   string `json:"untaggedVlanID"`
+	ManagementVLANID string `json:"managementVlanID"`
+	InterVLANRouting string `json:"interVlanRouting"`
+	FQDN             string `json:"fqdn"`
+}
+
+type networkEnvelope struct {
+	System struct {
+		BasicSettings NetworkSettings `json:"basicSettings"`
+	} `json:"system"`
+}
+
+func networkPayload(n NetworkSettings) map[string]any {
+	return map[string]any{"system": map[string]any{"basicSettings": n}}
+}
+
+func (c *Client) GetNetwork() (NetworkSettings, error) {
+	var env networkEnvelope
+	err := c.Call(networkPayload(NetworkSettings{}), &env)
+	return env.System.BasicSettings, err
+}
+
+// SetNetwork writes the whole addressing block.
+//
+// If this changes the address, the AP moves immediately and the connection
+// carrying the request dies - that is expected, not a failure. Reconnect on the
+// new address to verify.
+func (c *Client) SetNetwork(n NetworkSettings) error {
+	return c.Call(networkPayload(n), nil)
+}
+
 // DeviceInfo is the dashboard summary, useful for an exporter and for
 // confirming the AP is standalone (CloudStatus "0") rather than Insight-managed.
 type DeviceInfo struct {

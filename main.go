@@ -19,6 +19,10 @@ func main() {
 		// sibling local providers.
 		Address: "local/mikebones/netgear",
 	})
+	// Not deferred: log.Fatal below would skip it. Sessions held on the
+	// devices are only released by asking, so this has to run on both paths.
+	provider.Cleanup()
+
 	if err != nil {
 		log.Fatal(err.Error())
 	}

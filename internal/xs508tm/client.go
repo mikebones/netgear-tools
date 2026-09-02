@@ -266,12 +266,47 @@ func (c *Client) login() error {
 		return fmt.Errorf("login as %q: %w", c.username, err)
 	}
 
+	if err := loginEnvelopeError(reply); err != nil {
+		return fmt.Errorf("login as %q: %w", c.username, err)
+	}
+
 	if tok := findToken(reply); tok != "" {
 		c.token = tok
 		return nil
 	}
 	return fmt.Errorf("login as %q succeeded but no token field was recognised in the reply (keys: %v)",
 		c.username, keysOf(reply))
+}
+
+// errCodeLoginRejected is what this firmware returns for a login it will not
+// grant. It is reported inside a 200 response.
+const errCodeLoginRejected = 481
+
+// loginEnvelopeError reports a rejection the switch signalled in the body. It
+// answers HTTP 200 with status "failure" inside the `resp` envelope, so
+// without this check a refused login reaches the caller as "no token field was
+// recognised" - which reads like a firmware-compatibility problem and sends
+// you looking in entirely the wrong place.
+func loginEnvelopeError(reply map[string]any) error {
+	env, ok := reply["resp"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if status, _ := env["status"].(string); status != "failure" {
+		return nil
+	}
+	code := 0
+	if f, ok := env["errCode"].(float64); ok {
+		code = int(f)
+	}
+	if code == errCodeLoginRejected {
+		return fmt.Errorf("rejected with errCode %d. Wrong credentials are the obvious "+
+			"cause, but this switch returns the same code when its session table is full - "+
+			"it holds only a few sessions, and they are freed by logging out or by idling "+
+			"out, never by the client going away. If the password is known good, something "+
+			"has been leaking sessions; wait for the idle timeout to clear them", code)
+	}
+	return fmt.Errorf("rejected by the switch (errCode %d)", code)
 }
 
 // findToken walks the login reply for the first plausible token value. The
@@ -325,6 +360,13 @@ func (c *Client) Get(path string, out any) error {
 			return err
 		}
 	}
+	// This switch keeps a small session table, and Terraform runs the provider
+	// as a short-lived process that gets killed rather than shut down - so a
+	// session held past the call that opened it is a session leaked for good.
+	// A few runs of that and logins start being refused. Pay the extra login
+	// per call and always hand the session back.
+	defer c.logoutLocked()
+
 	err := c.do(http.MethodGet, path, nil, out)
 	if isAuthError(err) {
 		if lerr := c.login(); lerr != nil {
@@ -345,6 +387,13 @@ func (c *Client) Post(path string, body, out any) error {
 			return err
 		}
 	}
+	// This switch keeps a small session table, and Terraform runs the provider
+	// as a short-lived process that gets killed rather than shut down - so a
+	// session held past the call that opened it is a session leaked for good.
+	// A few runs of that and logins start being refused. Pay the extra login
+	// per call and always hand the session back.
+	defer c.logoutLocked()
+
 	err := c.do(http.MethodPost, path, body, out)
 	if isAuthError(err) {
 		if lerr := c.login(); lerr != nil {
@@ -365,6 +414,11 @@ func isAuthError(err error) bool {
 func (c *Client) Logout() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.logoutLocked()
+}
+
+// logoutLocked is Logout without taking the mutex. Caller must hold c.mu.
+func (c *Client) logoutLocked() {
 	if c.token == "" {
 		return
 	}
