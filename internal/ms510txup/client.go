@@ -752,3 +752,72 @@ func (c *Client) Logout() error {
 	c.tabid, c.pub, c.xsrf = "", nil, ""
 	return err
 }
+
+// --- port configuration ------------------------------------------------------
+
+// The storage VLAN depends on these ports carrying frames larger than the
+// standard 1500, and the switch ships with the maximum already set - so this
+// exists to DECLARE a dependency rather than to change anything. A factory
+// reset, or a firmware upgrade that clears configuration (this switch has done
+// exactly that with syslog and SNTP), would silently drop the frame size back
+// and break the storage path with no other symptom.
+//
+// The write is cgi/set.cgi?cmd=port_port with `port` and `maxFrm`. Determined
+// empirically: the switch answers "ok" to field names it does not recognise,
+// so the only way to tell a real write from an ignored one is to change a
+// value on a port with no link and read it back.
+
+// PortMaxFrameMin and PortMaxFrameMax bound what the switch accepts. Read back
+// from the device as maxFrm_min / maxFrm_max.
+const (
+	PortMaxFrameMin = 1522
+	PortMaxFrameMax = 10000
+)
+
+type portEntry struct {
+	MaxFrm  int    `json:"maxFrm"`
+	Link    int    `json:"link"`
+	Descp   string `json:"descp"`
+	IfIndex int    `json:"ifindex"`
+}
+
+type portConf struct {
+	MaxFrmMin int         `json:"maxFrm_min"`
+	MaxFrmMax int         `json:"maxFrm_max"`
+	Ports     []portEntry `json:"ports"`
+}
+
+// GetPortMaxFrame reads one front-panel port's maximum frame size.
+func (c *Client) GetPortMaxFrame(port int) (int, error) {
+	var cfg portConf
+	if err := c.Get("port_port", &cfg); err != nil {
+		return 0, err
+	}
+	if port < 1 || port > len(cfg.Ports) {
+		return 0, fmt.Errorf("port %d is outside the %d this switch has", port, len(cfg.Ports))
+	}
+	return cfg.Ports[port-1].MaxFrm, nil
+}
+
+// SetPortMaxFrame sets one port's maximum frame size.
+func (c *Client) SetPortMaxFrame(port, size int) error {
+	if size < PortMaxFrameMin || size > PortMaxFrameMax {
+		return fmt.Errorf("max frame size %d is outside the %d-%d this switch accepts",
+			size, PortMaxFrameMin, PortMaxFrameMax)
+	}
+	if err := c.Set("port_port", []Field{
+		{"port", fmt.Sprint(port)},
+		{"maxFrm", fmt.Sprint(size)},
+	}); err != nil {
+		return err
+	}
+	// The switch reports success for writes it silently ignored, so confirm.
+	got, err := c.GetPortMaxFrame(port)
+	if err != nil {
+		return err
+	}
+	if got != size {
+		return fmt.Errorf("port %d still reports %d after being set to %d", port, got, size)
+	}
+	return nil
+}

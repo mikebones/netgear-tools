@@ -215,6 +215,7 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		// XS-series switch
 		NewSwitchIGMPSnoopingResource,
 		NewSwitchPortMTUResource,
+		NewMS510PortMaxFrameResource,
 		NewSwitchSyslogServerResource,
 		// WAX6-series access point
 		NewAPSyslogResource,
