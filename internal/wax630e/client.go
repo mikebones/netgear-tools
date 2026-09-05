@@ -460,3 +460,36 @@ func (c *Client) logoutLocked() error {
 	c.token = ""
 	return err
 }
+
+// --- admin password ---------------------------------------------------------
+
+// SetAdminPassword changes the AP's admin credential.
+//
+// The field is newadminPasswd, a sibling of the other basicSettings fields.
+// It is NOT the adminPasswd used at login - that one authenticates, this one
+// replaces. Sending adminPasswd here does nothing and reports success.
+//
+// The name was recovered from the AP's own js/vendor.bundle.js, where the
+// setup form builds basicSettings.newadminPasswd from the new-password input.
+// It does not appear in the api_entries list in scripts/wax630e_api.json;
+// changeUserPassword and validateOldPwd do appear there, but those are the
+// day-zero paths and are not what the configured AP's settings page uses.
+//
+// Unlike the router, the AP does NOT ask for the old password - the session
+// is the proof of authorisation. Verified against firmware on 2026-09-05:
+// reply {"status": 0}, the old credential rejected with err_code 26 on the
+// next login, the new one accepted.
+//
+// A failed login LEAKS A SESSION SLOT on this hardware, and the AP starts
+// answering 401 to everyone - the browser included - once the table fills.
+// Always Logout after changing the password, then build a fresh Client.
+func (c *Client) SetAdminPassword(newPassword string) error {
+	if newPassword == "" {
+		return fmt.Errorf("new password is required")
+	}
+	return c.Call(map[string]any{
+		"system": map[string]any{
+			"basicSettings": map[string]any{"newadminPasswd": newPassword},
+		},
+	}, nil)
+}

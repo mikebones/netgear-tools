@@ -1,0 +1,96 @@
+{
+  "_meta": {
+    "model": "PR60X",
+    "firmware": "3.0.0.105",
+    "recovered": "2026-09-05",
+    "why": "discover.py sweeps only get* methods, so discovery.json contains no setters at all. These names were recovered from the router's own UI bundle /static/js/main.<hash>.js and confirmed against the device.",
+    "how_to_repeat": "fetch the bundle referenced by GET / and grep for '\"(set|change|add|delete|edit)[A-Za-z]+\"'; the call sites carry the params object literally."
+  },
+  "verified": {
+    "setAdminPassword": {
+      "params": {
+        "oldPassword": "<string>",
+        "newPassword": "<string>"
+      },
+      "expect": {
+        "result": 0
+      },
+      "notes": [
+        "invalidates the current session on success",
+        "router rate-limits failed logins and locks the account for minutes"
+      ]
+    },
+    "getStaticLeaseProfiles": {
+      "params": {
+        "vlanID": "<int>"
+      },
+      "returns": {
+        "vlanID": "<int>",
+        "List": [
+          {
+            "id": 0,
+            "name": "",
+            "ip": "",
+            "mac": ""
+          }
+        ]
+      },
+      "notes": [
+        "returns null if vlanID is omitted, which looks like 'no reservations'"
+      ]
+    },
+    "addStaticLeaseProfiles": {
+      "params": {
+        "vlanID": "<int>",
+        "List": [
+          {
+            "id": 0,
+            "name": "",
+            "ip": "",
+            "mac": ""
+          }
+        ]
+      },
+      "expect": {
+        "result": 0
+      },
+      "notes": [
+        "takes the COMPLETE list and replaces it; the name says add",
+        "an address with no existing DHCP lease is rejected SILENTLY - result null, list unchanged, no error. Tested with an out-of-pool address and a free in-pool one; both dropped."
+      ]
+    },
+    "deleteStaticLeaseProfiles": {
+      "params": {
+        "vlanID": "<int>",
+        "List": [
+          "<entries to remove>"
+        ]
+      }
+    }
+  },
+  "seen_but_unverified": [
+    "resetAdminPassword",
+    "setPasswordRecovery",
+    "setSSH",
+    "setLagSettings",
+    "setLldpSettings",
+    "setPortSettings",
+    "setNtpSettings",
+    "setSnmpSettings",
+    "setFastPathEngine",
+    "setLedControl",
+    "setMdnsSettings",
+    "setTimeSettings",
+    "setTrafficRules",
+    "setVlanPorts",
+    "setVlanAdvancedSettings",
+    "setDualWanProfiles",
+    "setScheduledReboot",
+    "setSecureDNSSettings",
+    "setGuiIdleTimeout",
+    "setDeviceName",
+    "editStaticLeaseProfiles",
+    "importStaticLeaseProfiles",
+    "deleteAllStaticLeaseProfiles"
+  ]
+}

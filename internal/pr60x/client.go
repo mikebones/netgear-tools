@@ -994,3 +994,117 @@ func (c *Client) GetSecureDNSSettings() (*SecureDNSSettings, error) {
 	}
 	return &out, nil
 }
+
+// --- Static DHCP leases (IP reservations) ----------------------------------
+//
+// The router calls these "static lease profiles"; the UI calls them IP
+// Reservations. They pin an address to a MAC so the DHCP pool can never hand
+// it to something else.
+//
+// THREE THINGS ABOUT THIS API THAT ARE NOT OBVIOUS, all established by
+// experiment against firmware 3.0.0.105 on 2026-09-05:
+//
+//  1. getStaticLeaseProfiles REQUIRES a vlanID parameter. Called with empty
+//     params it returns null, which reads like "no reservations" rather than
+//     "you asked wrong" - the single most misleading result here.
+//
+//  2. addStaticLeaseProfiles takes the COMPLETE list, not an addition. The
+//     name says add; the behaviour is set. Sending a shorter list is how you
+//     remove entries, so a read-modify-write is mandatory and a caller that
+//     sends only its own entry silently deletes everyone else's.
+//
+//  3. THE ADDRESS MUST ALREADY HOLD A LEASE. Reserving an address the router
+//     has never leased is rejected - and rejected SILENTLY: the reply carries
+//     no error, result is simply null and the list is unchanged. Verified
+//     twice, with an out-of-pool address (192.168.1.99) and with a free
+//     in-pool one (192.168.1.240); both were dropped, while the same call
+//     against five currently-leased addresses returned result 0 and applied.
+//     This mirrors the UI, where reservations are made by selecting rows in
+//     the DHCP lease table rather than by typing an address.
+//
+//     The practical consequence: you cannot pre-declare a reservation for a
+//     host that has not booted yet. Let it take a lease first, then pin it.
+type StaticLease struct {
+	// ID is the row index within the VLAN's list, assigned by the caller and
+	// renumbered on every write. It is not a stable identifier for a host.
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	IP   string `json:"ip"`
+	MAC  string `json:"mac"`
+}
+
+type staticLeaseList struct {
+	VLANID int64         `json:"vlanID"`
+	List   []StaticLease `json:"List"`
+}
+
+// ListStaticLeases returns every reservation on the given VLAN.
+func (c *Client) ListStaticLeases(vlanID int64) ([]StaticLease, error) {
+	var out staticLeaseList
+	if err := c.CallResult("getStaticLeaseProfiles",
+		map[string]int64{"vlanID": vlanID}, &out); err != nil {
+		return nil, err
+	}
+	return out.List, nil
+}
+
+// SetStaticLeases REPLACES the reservation list for a VLAN. See the notes
+// above: this is the whole list, and every address in it must already hold a
+// DHCP lease or it is dropped without an error.
+//
+// IDs are renumbered from zero so the caller does not have to track them.
+func (c *Client) SetStaticLeases(vlanID int64, leases []StaticLease) error {
+	for i := range leases {
+		leases[i].ID = int64(i)
+	}
+	if leases == nil {
+		leases = []StaticLease{}
+	}
+	return c.Call("addStaticLeaseProfiles",
+		staticLeaseList{VLANID: vlanID, List: leases}, nil)
+}
+
+// DeleteStaticLeases removes specific reservations. Passing the entries to
+// keep to SetStaticLeases achieves the same thing; this exists because the
+// firmware offers it and it expresses intent better at a call site.
+func (c *Client) DeleteStaticLeases(vlanID int64, leases []StaticLease) error {
+	return c.Call("deleteStaticLeaseProfiles",
+		staticLeaseList{VLANID: vlanID, List: leases}, nil)
+}
+
+// --- Admin password --------------------------------------------------------
+
+// SetAdminPassword changes the router's admin credential.
+//
+// The method name is not in discovery.json because scripts/discover.py only
+// sweeps get* methods; it was recovered from the web UI bundle
+// (/static/js/main.<hash>.js), where the change-password form builds
+// {oldPassword, newPassword} and posts it as setAdminPassword.
+//
+// TWO OPERATIONAL WARNINGS, both learned the hard way:
+//
+//   - The device INVALIDATES THE CURRENT SESSION on success. This client's
+//     token is cleared so the next call re-logs-in with whatever password the
+//     Client was constructed with - which is the OLD one. Build a new Client
+//     with the new password rather than reusing this one.
+//
+//   - The router rate-limits failed logins and locks the account for minutes
+//     after a handful. Anything polling with the old credential - the
+//     exporter, most obviously - will trip that lock within seconds of the
+//     change and take the router's own web UI down with it until it expires.
+//     Stop the pollers first, or accept several minutes of 429.
+func (c *Client) SetAdminPassword(oldPassword, newPassword string) error {
+	if oldPassword == "" || newPassword == "" {
+		return fmt.Errorf("both the old and new password are required")
+	}
+	if err := c.Call("setAdminPassword", map[string]string{
+		"oldPassword": oldPassword,
+		"newPassword": newPassword,
+	}, nil); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.token = ""
+	c.mu.Unlock()
+	return nil
+}

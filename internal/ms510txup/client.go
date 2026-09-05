@@ -821,3 +821,35 @@ func (c *Client) SetPortMaxFrame(port, size int) error {
 	}
 	return nil
 }
+
+// PASSWORD CHANGE IS NOT IMPLEMENTED HERE, AND THE REASON IS WORTH RECORDING.
+//
+// This client speaks the switch's HTTP interface, where the admin credential
+// lives behind set_secMgmtUser. That path has to carry the obfuscated password
+// encoding, the bj4 URL signature and the XSRF/session dance that the rest of
+// this file implements - and getting a password write wrong there locks you
+// out of the device it authenticates to.
+//
+// The CLI over SSH does the same job with none of that risk, and the switch
+// has SSH open. The sequence, verified on 2026-09-05:
+//
+//	configure
+//	username admin algorithm-type sha256 secret <new-plaintext>
+//	Old password: <old>          <- INTERACTIVE PROMPT, see below
+//	end
+//	save                         -> "Success"
+//
+// THE TRAP: the command looks complete on one line and is not. After sending
+// it the switch prompts "Old password:" and waits. Send the next command and
+// it is consumed as the answer, giving "Old password is incorrect !" - which
+// reads like a wrong credential but means a mis-sequenced session. That
+// failure is safe (nothing changes), but it is the failure you will get.
+//
+// Note also that this CLI is NOT the FASTPATH dialect the XS508TM speaks:
+// there is no `enable` (the session opens privileged at "MS510TXUP#"), no
+// top-level `password`, and the save command is `save`, not `write memory`.
+// The two switches share a vendor and almost nothing else.
+//
+// Implementing this properly means adding SSH plumbing to this package, the
+// way internal/xs508tm/cli.go did. Until then it is a manual procedure, and
+// the steps above are the whole of it.

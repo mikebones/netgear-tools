@@ -6,11 +6,13 @@
       "POST /socketCommunication is the single API endpoint, same architecture as the PR60X router",
       "sets an lhttpdsid session cookie - shared with the PR60X and both switches",
       "auth header is lowercase 'security', value = base64decode(cookie 'ssid')",
-      "endpoint answers structured JSON; a wrong payload returns {\"status\":100}"
+      "endpoint answers structured JSON; a wrong payload returns {\"status\":100}",
+      "admin password is changed with system.basicSettings.newadminPasswd (a sibling field, NOT the adminPasswd used at login); reply {\"status\":0}; no old password required, the session is the authorisation. Verified 2026-09-05."
     ],
     "unresolved": [
-      "login payload shape - three candidate shapes all returned status 100"
-    ]
+      "changeUserPassword and validateOldPwd are in api_entries but are the day-zero paths; the configured AP's settings page uses newadminPasswd instead. Their payload shapes are still unknown and were not needed."
+    ],
+    "login_payload": "{\"system\":{\"basicSettings\":{\"adminName\":<user>,\"adminPasswd\":<pass>}}} with a 'time' header 45 minutes ahead; token in system.security_token or the 'security' response header depending on firmware. See wax630e_client.py."
   },
   "api_entries": [
     "getSSID",

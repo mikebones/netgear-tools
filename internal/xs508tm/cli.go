@@ -239,3 +239,56 @@ func (c *Client) SetPortMTU(port, mtu int) error {
 	}
 	return nil
 }
+
+// SetAdminPassword changes the switch's admin credential over the CLI.
+//
+// `password` is a TOP-LEVEL command, available in user mode, and it prompts
+// for old / new / confirm in that order with no echo. It is used rather than
+// `configure` + `username` because it validates the old password as part of
+// the change, so a wrong assumption about the current credential fails safely
+// instead of half-applying.
+//
+// THE PART THAT WILL COST YOU THE CHANGE IF YOU MISS IT:
+//
+// `password` runs in USER mode, and in user mode `save` is not a command -
+// it comes back "% Invalid input detected at '^' marker.". The switch happily
+// prints "Password Changed!" and the running config holds the new credential,
+// but nothing has been written to NVRAM, so the next reboot silently restores
+// the old password. Observed exactly this on 2026-09-05.
+//
+// So the sequence is deliberately: change, THEN `enable`, THEN `write memory`
+// and answer its y/n. The save is verified rather than assumed, because a
+// credential that reverts at the next power cut is worse than one that never
+// changed - it will be the old one precisely when nobody remembers it.
+func (c *Client) SetAdminPassword(oldPassword, newPassword string) error {
+	if oldPassword == "" || newPassword == "" {
+		return fmt.Errorf("both the old and new password are required")
+	}
+	cli, err := c.DialCLI()
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+
+	cli.Send("password", 4*time.Second)
+	cli.Send(oldPassword, 4*time.Second)
+	cli.Send(newPassword, 4*time.Second)
+	out := cli.Send(newPassword, 8*time.Second)
+
+	if !strings.Contains(out, "Password Changed") {
+		return fmt.Errorf("password was not changed: %s", strings.TrimSpace(lastLines(out, 3)))
+	}
+
+	// NVRAM, or the change is lost at the next reboot. Privileged mode first -
+	// see the note above.
+	cli.Send("enable", 4*time.Second)
+	save := cli.Send("write memory", 8*time.Second)
+	if strings.Contains(strings.ToLower(save), "y/n") {
+		save = cli.Answer("y", 40*time.Second)
+	}
+	if !strings.Contains(save, "Configuration Saved") && !strings.Contains(save, "successfully") {
+		return fmt.Errorf("the password was changed but the save could not be confirmed, "+
+			"so it will revert at the next reboot: %s", strings.TrimSpace(lastLines(save, 3)))
+	}
+	return nil
+}
