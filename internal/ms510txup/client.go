@@ -853,3 +853,110 @@ func (c *Client) SetPortMaxFrame(port, size int) error {
 // Implementing this properly means adding SSH plumbing to this package, the
 // way internal/xs508tm/cli.go did. Until then it is a manual procedure, and
 // the steps above are the whole of it.
+
+// --- IGMP snooping ----------------------------------------------------------
+//
+// Not in the CLI at all on this model - `show` has no igmp or multicast
+// subcommand and neither does config mode, so this is HTTP-only. The endpoints
+// are mcast_igsGlobal (the global switch) and mcast_igsVlan (per-VLAN state).
+//
+// WHY IT MATTERS HERE: without snooping the switch floods every multicast
+// frame to every port. This is the switch all five cluster nodes hang off, on
+// a flat LAN carrying mDNS, SSDP and Plex GDM discovery, so that is a constant
+// tax on every attached NIC - and these are Pis that were already dropping
+// frames on an undersized RX ring. The XS508TM has had snooping on and
+// declared in Terraform for a while; this switch was found with igsState 0,
+// globally and on every VLAN including 1 and 20.
+
+type IGMPSnoopingGlobal struct {
+	// State is 0 or 1. The field is igsState on the wire; note the reply also
+	// carries vlaidIgmpState (sic - the firmware's own typo), which is NOT the
+	// global switch and should not be confused with it.
+	State          int `json:"igsState"`
+	ValidIGMPState int `json:"vlaidIgmpState"`
+	CtrlFrameCount int `json:"igmpCtrlFrmCnt"`
+}
+
+type IGMPSnoopingVLAN struct {
+	VLANID       int `json:"vlanId"`
+	State        int `json:"state"`
+	FastLeave    int `json:"fastLv"`
+	HostTimeout  int `json:"hostTime"`
+	MaxResponse  int `json:"maxResp"`
+	MRouterTime  int `json:"mrtTime"`
+	ReportSuppEn int `json:"rptSuppEn"`
+	QuerierEn    int `json:"qryEn"`
+	QueryIntvl   int `json:"qryIntvl"`
+}
+
+type igmpSnoopingVLANReply struct {
+	VLANs []IGMPSnoopingVLAN `json:"igsVlans"`
+}
+
+// GetIGMPSnooping reads the global snooping state.
+func (c *Client) GetIGMPSnooping() (IGMPSnoopingGlobal, error) {
+	var out IGMPSnoopingGlobal
+	err := c.Get("mcast_igsGlobal", &out)
+	return out, err
+}
+
+// SetIGMPSnooping turns global IGMP snooping on or off.
+//
+// Global only. Enabling it here does NOT enable it per VLAN - the per-VLAN
+// rows keep their own state, and a VLAN left at 0 still floods. Use
+// SetIGMPSnoopingVLAN for each VLAN that should snoop, and read both back:
+// this firmware accepts writes for fields it then ignores.
+func (c *Client) SetIGMPSnooping(enabled bool) error {
+	v := "0"
+	if enabled {
+		v = "1"
+	}
+	return c.Set("mcast_igsGlobal", []Field{{"igsState", v}})
+}
+
+// ListIGMPSnoopingVLANs reads the per-VLAN snooping rows.
+func (c *Client) ListIGMPSnoopingVLANs() ([]IGMPSnoopingVLAN, error) {
+	var out igmpSnoopingVLANReply
+	if err := c.Get("mcast_igsVlan", &out); err != nil {
+		return nil, err
+	}
+	return out.VLANs, nil
+}
+
+// GetIGMPSnoopingVLAN returns one VLAN's row, or nil if the switch has none.
+func (c *Client) GetIGMPSnoopingVLAN(vlanID int) (*IGMPSnoopingVLAN, error) {
+	all, err := c.ListIGMPSnoopingVLANs()
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].VLANID == vlanID {
+			return &all[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// SetIGMPSnoopingVLAN enables or disables snooping on one VLAN.
+//
+// The row carries several timers alongside the state. They are sent as read
+// rather than defaulted, because sending a zero for a timer the firmware
+// treats as "use this value" would silently reconfigure the querier while the
+// caller thought they were only flipping a switch.
+func (c *Client) SetIGMPSnoopingVLAN(v IGMPSnoopingVLAN, enabled bool) error {
+	state := "0"
+	if enabled {
+		state = "1"
+	}
+	return c.Set("mcast_igsVlan", []Field{
+		{"vlanId", fmt.Sprint(v.VLANID)},
+		{"state", state},
+		{"fastLv", fmt.Sprint(v.FastLeave)},
+		{"hostTime", fmt.Sprint(v.HostTimeout)},
+		{"maxResp", fmt.Sprint(v.MaxResponse)},
+		{"mrtTime", fmt.Sprint(v.MRouterTime)},
+		{"rptSuppEn", fmt.Sprint(v.ReportSuppEn)},
+		{"qryEn", fmt.Sprint(v.QuerierEn)},
+		{"qryIntvl", fmt.Sprint(v.QueryIntvl)},
+	})
+}
