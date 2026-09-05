@@ -350,7 +350,7 @@ func trimSpace(s string) string {
 func main() {
 	var (
 		listen   = flag.String("listen", ":9813", "Address to serve /metrics on.")
-		endpoint = flag.String("endpoint", envOr("XS508TM_ENDPOINT", "http://192.168.1.223"), "Switch base URL.")
+		endpoint = flag.String("endpoint", envOr("XS508TM_ENDPOINT", "http://192.168.1.3"), "Switch base URL.")
 		username = flag.String("username", envOr("XS508TM_USERNAME", "admin"), "Switch username.")
 		interval = flag.Duration("interval", 60*time.Second, "Poll interval. Not below 15s.")
 		insecure = flag.Bool("insecure", true, "Skip TLS verification.")

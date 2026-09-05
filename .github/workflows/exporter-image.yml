@@ -3,14 +3,14 @@
 # Multi-arch matters here rather than being a nicety: a mixed amd64/arm64
 # cluster will happily schedule the pod onto an arm64 node, and a
 # single-arch image just fails to pull there with no obvious clue why.
-name: exporter image
+name: exporter images
 
 on:
   push:
     branches: [main]
     paths:
-      - "cmd/pr60x-exporter/**"
-      - "internal/pr60x/**"
+      - "cmd/**"
+      - "internal/**"
       - "Dockerfile"
       - ".github/workflows/exporter-image.yml"
   # Releases publish an immutable :vX.Y.Z alongside the rolling :main.
@@ -25,6 +25,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      # fail-fast off: one exporter failing to build is not a reason to skip
+      # publishing the other, which may be the one that was actually fixed.
+      fail-fast: false
+      matrix:
+        exporter: [pr60x-exporter, xs508tm-exporter]
     steps:
       - uses: actions/checkout@v4
 
@@ -54,7 +60,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/pr60x-exporter
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.exporter }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -65,7 +71,12 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            EXPORTER=${{ matrix.exporter }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Scope the cache per exporter; a shared scope makes the second
+          # build in the matrix restore the first one's layers and rebuild
+          # anyway, which is slower than no cache at all.
+          cache-from: type=gha,scope=${{ matrix.exporter }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.exporter }}
