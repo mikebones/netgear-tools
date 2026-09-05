@@ -212,6 +212,7 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewRemoteSyslogResource,
 		NewSQMResource,
 		NewUPnPResource,
+		NewStaticLeasesResource,
 		// XS-series switch
 		NewSwitchIGMPSnoopingResource,
 		NewSwitchPortMTUResource,
