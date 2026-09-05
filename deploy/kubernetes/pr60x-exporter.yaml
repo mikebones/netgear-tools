@@ -31,6 +31,12 @@ metadata:
 #
 # This is the router's only credential and it owns the network edge, so it is
 # worth doing properly rather than leaving a literal here.
+#
+# The value below is a PLACEHOLDER and must be replaced. This file shipped
+# with a real password in it once - in a public repository - which is exactly
+# the mistake the paragraph above is warning about. Anything committed here
+# is published; treat this Secret as documentation of the shape, never as a
+# place to put a working credential.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -38,7 +44,7 @@ metadata:
   namespace: pr60x-exporter
 type: Opaque
 stringData:
-  password: "REPLACE-ME"
+  password: "REPLACE-ME-do-not-commit-a-real-password"
 ---
 apiVersion: apps/v1
 kind: Deployment
