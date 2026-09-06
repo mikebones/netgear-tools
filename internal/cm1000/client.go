@@ -178,10 +178,10 @@ func (c *Client) get(path string) ([]byte, error) {
 	defer func() { c.lastCall = time.Now() }()
 
 	var lastErr error
-	// Two attempts. A connection reset here is usually the one-connection
-	// limit rather than a real failure, and retrying once costs less than a
-	// spurious gap in the metrics.
-	for attempt := 0; attempt < 2; attempt++ {
+	// Three attempts. Both failure modes here - a connection reset and a 401 -
+	// are usually the one-session limit rather than a real fault, and retrying
+	// costs less than a spurious gap in the metrics.
+	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			time.Sleep(minInterval)
 		}
@@ -201,8 +201,21 @@ func (c *Client) get(path string) ([]byte, error) {
 			lastErr = err
 			continue
 		}
+		// 401 IS RETRYABLE ON THIS DEVICE, and that is not a guess. The modem
+		// permits ONE admin session at a time and answers 401 to a second
+		// client while the first holds it - so a 401 here means "someone else
+		// is logged in" at least as often as it means "wrong password". Seen
+		// in practice: a poll 401'd purely because a browser session was open,
+		// and the next one succeeded untouched.
+		//
+		// Retrying costs one extra request and turns a spurious gap in the
+		// metrics into a slightly slower poll. Only a 401 on the LAST attempt
+		// is reported, and it says both possible causes rather than sending
+		// the reader off to re-check a password that is probably fine.
 		if resp.StatusCode == http.StatusUnauthorized {
-			return nil, fmt.Errorf("%s returned 401 - the modem rejected the admin credentials", path)
+			lastErr = fmt.Errorf("%s returned 401 - either the admin credentials are wrong, or "+
+				"another client holds the modem's single admin session", path)
+			continue
 		}
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("%s returned %d", path, resp.StatusCode)
