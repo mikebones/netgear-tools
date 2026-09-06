@@ -83,13 +83,56 @@ type StartupStep struct {
 	Comment string
 }
 
-// OK reports whether a startup step is in a healthy terminal state. The
-// firmware uses a different word per row - "Locked", "OK", "Operational" -
-// so this is a set membership test, not a single comparison.
+// healthyStartup are the words this firmware uses for a good state. It uses a
+// different one per row rather than a single convention.
+var healthyStartup = map[string]bool{
+	"locked": true, "ok": true, "operational": true,
+	"done": true, "success": true, "synchronized": true,
+	// Security reads "Enable" with a comment of "BPI+" - that is baseline
+	// privacy encryption turned on, which is the good state. "Disabled" here
+	// is real and worth noticing.
+	"enable": true, "enabled": true,
+}
+
+// informationalStartup are rows that carry a MODE, not a health state, and so
+// have no failing value to test for. IP Provisioning Mode reads "Honor MDD"
+// with a comment of "APM" - that is the modem doing as the CMTS told it, and
+// there is no variant of it that means trouble. Reporting these as unhealthy
+// because they do not say "OK" would be a permanent false alarm.
+var informationalStartup = map[string]bool{
+	"ip provisioning mode": true,
+}
+
+// OK reports whether a startup step is in a healthy state.
+//
+// CHECKS BOTH COLUMNS, and that is not belt-and-braces. The firmware does not
+// keep health in one place: "Acquire Downstream Channel" puts the FREQUENCY in
+// Status ("729000000 Hz") and the word "Locked" in Comment, while
+// "Connectivity State" puts "OK" in Status and "Operational" in Comment.
+// Testing Status alone marks a perfectly healthy modem as failing on the one
+// row that matters most.
 func (s StartupStep) OK() bool {
-	switch strings.ToLower(strings.TrimSpace(s.Status)) {
-	case "locked", "ok", "operational", "done", "success", "synchronized":
+	return s.okWithName("")
+}
+
+// OKFor is OK with the row's name, so the informational rows can be
+// recognised. Prefer it where the name is to hand.
+func (s StartupStep) OKFor(name string) bool { return s.okWithName(name) }
+
+func (s StartupStep) okWithName(name string) bool {
+	if informationalStartup[strings.ToLower(strings.TrimSpace(name))] {
 		return true
+	}
+	for _, v := range []string{s.Status, s.Comment} {
+		if healthyStartup[strings.ToLower(strings.TrimSpace(v))] {
+			return true
+		}
+	}
+	// Configuration File reports the config filename rather than a status
+	// word once it has one, e.g. "^1/846CFC3A/TYPE=RES/...". Having a value
+	// at all is the success condition; the failure is an empty cell.
+	if strings.EqualFold(strings.TrimSpace(name), "configuration file") {
+		return strings.TrimSpace(s.Status) != "" || strings.TrimSpace(s.Comment) != ""
 	}
 	return false
 }

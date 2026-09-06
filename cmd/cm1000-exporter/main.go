@@ -153,8 +153,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		lastScrape: f.gauge("last_scrape_timestamp_seconds", "Unix time of the last successful poll."),
 
 		startupOK: f.vec("startup_step_ok", "1 if this DOCSIS provisioning step is in a healthy state. "+
-			"The steps use different words for healthy - Locked, OK, Operational - so this normalises "+
-			"them; the raw text is on cm1000_startup_step_info.", "step"),
+			"The steps use different words for healthy - Locked, OK, Operational, Enable - AND put it in "+
+			"different columns: Acquire Downstream Channel carries the frequency in Status and 'Locked' in "+
+			"Comment. Rows that report a mode rather than a state (IP Provisioning Mode) are always 1, "+
+			"because they have no failing value. Raw text is on cm1000_startup_step_info.", "step"),
 		startupInfo: f.vec("startup_step_info", "Always 1. Carries each provisioning step's raw status "+
 			"and comment as labels.", "step", "status", "comment"),
 
@@ -218,7 +220,7 @@ func (p *poller) poll() {
 	p.m.startupOK.Reset()
 	p.m.startupInfo.Reset()
 	for name, step := range st.Startup {
-		p.m.startupOK.WithLabelValues(name).Set(b2f(step.OK()))
+		p.m.startupOK.WithLabelValues(name).Set(b2f(step.OKFor(name)))
 		p.m.startupInfo.WithLabelValues(name, step.Status, step.Comment).Set(1)
 	}
 
