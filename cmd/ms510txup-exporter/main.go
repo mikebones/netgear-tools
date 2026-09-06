@@ -161,7 +161,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			"and therefore tells you nothing.", "port"),
 		portFullDup:  f.vec("port_full_duplex", "1 if the negotiated link is full duplex.", "port"),
 		portMaxFrame: f.vec("port_max_frame_bytes", "Configured maximum frame size.", "port"),
-		portFlowCtrl: f.vec("port_flow_control_enabled", "1 if 802.3x flow control is on.", "port"),
+		portFlowCtrl: f.vec("port_flow_control_mode", "802.3x flow control MODE, not a boolean: "+
+			"0 disable, 1 symmetric, 2 asymmetric. Named _mode rather than _enabled because the "+
+			"device has three states and treating it as on/off is what made the first write silently "+
+			"do nothing.", "port"),
 
 		rxGood:  f.vec("port_rx_packets", "Good packets received since the counters were last reset.", "port"),
 		rxErr:   f.vec("port_rx_errors", "Receive errors since the counters were last reset.", "port"),
@@ -225,7 +228,11 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 
 // --- parsing ----------------------------------------------------------------
 
-var speedRe = regexp.MustCompile(`(\d+)\s*([MG])bps`)
+// Matches "1000 Mbps" and "2.5 Gbps" alike. THE DECIMAL IS NOT OPTIONAL to
+// handle: with a bare (\d+) the regex scans forward and matches the "5" out of
+// "2.5 Gbps", reporting a 2.5G link as 5000 Mbit/s. That is exactly what this
+// exporter did until the switch's own UI was compared against it.
+var speedRe = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*([MG])bps`)
 
 // parsePhyStats turns "1000 Mbps Full Duplex" into 1000 and true.
 //
@@ -295,7 +302,8 @@ func (p *poller) poll() {
 			p.m.portAdminUp.WithLabelValues(port).Set(b2f(pc.Admin == 1))
 			p.m.portLinkUp.WithLabelValues(port).Set(b2f(pc.Link == 1))
 			p.m.portMaxFrame.WithLabelValues(port).Set(float64(pc.MaxFrame))
-			p.m.portFlowCtrl.WithLabelValues(port).Set(b2f(pc.FlowCtrl == 1))
+			// MODE, not a boolean: 0 disable, 1 symmetric, 2 asymmetric.
+			p.m.portFlowCtrl.WithLabelValues(port).Set(float64(pc.FlowCtrl))
 			if mbps, full, ok := parsePhyStats(pc.PhyStats); ok {
 				p.m.portSpeedMbps.WithLabelValues(port).Set(mbps)
 				p.m.portFullDup.WithLabelValues(port).Set(b2f(full))

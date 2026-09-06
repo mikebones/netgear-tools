@@ -230,6 +230,7 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewMS510IGMPSnoopingResource,
 		NewMS510IGMPSnoopingVLANResource,
 		NewMS510IGMPQuerierVLANResource,
+		NewMS510PoEPortResource,
 	}
 }
 

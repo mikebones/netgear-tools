@@ -863,57 +863,101 @@ func (c *Client) SetPortMaxFrame(port, size int) error {
 	return nil
 }
 
-// GetPortFlowControl reports whether 802.3x flow control is on for a port.
-func (c *Client) GetPortFlowControl(port int) (bool, error) {
-	var cfg struct {
-		Ports []struct {
-			IfIndex  int `json:"ifIndex"`
-			FlowCtrl int `json:"flowCtrl"`
-		} `json:"ports"`
+// FlowControlMode is what the flowCtrl field actually holds. NOT A BOOLEAN -
+// that assumption is why the first attempt at this quietly did nothing.
+type FlowControlMode int
+
+const (
+	FlowControlDisabled   FlowControlMode = 0
+	FlowControlSymmetric  FlowControlMode = 1
+	FlowControlAsymmetric FlowControlMode = 2
+)
+
+func (m FlowControlMode) String() string {
+	switch m {
+	case FlowControlDisabled:
+		return "Disable"
+	case FlowControlSymmetric:
+		return "Symmetric"
+	case FlowControlAsymmetric:
+		return "Asymmetric"
 	}
-	if err := c.Get("port_port", &cfg); err != nil {
-		return false, err
-	}
-	for i, p := range cfg.Ports {
-		idx := p.IfIndex
-		if idx == 0 {
-			idx = i + 1
-		}
-		if idx == port {
-			return p.FlowCtrl == 1, nil
-		}
-	}
-	return false, fmt.Errorf("port %d not found", port)
+	return fmt.Sprintf("unknown(%d)", int(m))
 }
 
-// SetPortFlowControl turns 802.3x flow control on or off for one port.
+// PortConfig is one row of port_port, with the fields a write has to carry.
+type PortConfig struct {
+	IfIndex  int    `json:"ifindex"`
+	Descp    string `json:"descp"`
+	Admin    int    `json:"admin"`
+	Speed    string `json:"speed"`
+	Duplex   int    `json:"duplex"`
+	Trap     int    `json:"trap"`
+	FlowCtrl int    `json:"flowCtrl"`
+	MaxFrm   int    `json:"maxFrm"`
+	Link     int    `json:"link"`
+	MAC      string `json:"mac"`
+}
+
+// GetPortConfig returns one port's row. Ports are 1-based, as printed on the
+// chassis.
+func (c *Client) GetPortConfig(port int) (*PortConfig, error) {
+	var cfg struct {
+		Ports []PortConfig `json:"ports"`
+	}
+	if err := c.Get("port_port", &cfg); err != nil {
+		return nil, err
+	}
+	if port < 1 || port > len(cfg.Ports) {
+		return nil, fmt.Errorf("port %d out of range 1-%d", port, len(cfg.Ports))
+	}
+	return &cfg.Ports[port-1], nil
+}
+
+// GetPortFlowControl reports a port's flow control mode.
+func (c *Client) GetPortFlowControl(port int) (FlowControlMode, error) {
+	pc, err := c.GetPortConfig(port)
+	if err != nil {
+		return FlowControlDisabled, err
+	}
+	return FlowControlMode(pc.FlowCtrl), nil
+}
+
+// SetPortFlowControl sets a port's 802.3x flow control mode.
 //
-// WHAT IT ACTUALLY DOES, because the name oversells it: under congestion the
-// switch sends PAUSE frames to the link partner, which stops sending for a
-// requested interval. It converts a drop into a delay.
+// TWO THINGS MAKE THIS WORK, and both were found by capturing the web UI's
+// own POST after guessing failed seven times:
 //
-// That is not free, and it is not obviously good. PAUSE is per-LINK, not per
-// flow or per queue: one congested destination pauses EVERYTHING coming from
-// that neighbour, including traffic bound elsewhere. That is head-of-line
-// blocking, and on a switch carrying storage traffic it can turn one slow
-// receiver into a network-wide stall.
+//  1. selEntry IS ZERO-BASED. The UI sends selEntry=7 to configure port 8.
+//     Every other row-selector on this switch (mcast_igsVlan's selEntry,
+//     mcast_igsQryVlan's selVid) is the VLAN id itself, so the natural guess
+//     is the port number - which selects the NEXT port, or nothing.
+//  2. THE WHOLE ROW GOES WITH IT. descp, admin, speed, duplex and trap are
+//     all required alongside flowCtrl; a payload carrying only flowCtrl is
+//     accepted and discarded. There is no `port` field at all.
 //
-// It also only works if BOTH ENDS have it enabled and autonegotiated it. A
-// switch port with flow control on, talking to a NIC with it off, does
-// nothing at all - which is the usual reason "we turned it on and nothing
-// changed" gets misread as "it did not help".
+// The value is a MODE, not a boolean: 0 disable, 1 symmetric, 2 asymmetric.
 //
-// Measure before enabling. The symptom it addresses is receiver overrun,
-// which on Linux is node_network_receive_fifo_total; if that is flat, there
-// is nothing here to win.
-func (c *Client) SetPortFlowControl(port int, enabled bool) error {
-	v := "0"
-	if enabled {
-		v = "1"
+// Before enabling this anywhere, read the note on FlowControlMode's cost: it
+// converts drops into delay by pausing an ENTIRE LINK, so one congested
+// receiver stalls that neighbour's traffic to every other destination.
+// Measured on this network, there is nothing to win - a 3-into-1
+// oversubscription test that saturated a node's link produced 33,000 TCP
+// retransmits and ZERO receive overruns on the node, so PAUSE would have had
+// nothing to signal.
+func (c *Client) SetPortFlowControl(port int, mode FlowControlMode) error {
+	cur, err := c.GetPortConfig(port)
+	if err != nil {
+		return err
 	}
 	if err := c.Set("port_port", []Field{
-		{"port", fmt.Sprint(port)},
-		{"flowCtrl", v},
+		{"selEntry", fmt.Sprint(port - 1)},
+		{"descp", cur.Descp},
+		{"admin", fmt.Sprint(cur.Admin)},
+		{"speed", cur.Speed},
+		{"duplex", fmt.Sprint(cur.Duplex)},
+		{"trap", fmt.Sprint(cur.Trap)},
+		{"flowCtrl", fmt.Sprint(int(mode))},
 	}); err != nil {
 		return err
 	}
@@ -921,9 +965,9 @@ func (c *Client) SetPortFlowControl(port int, enabled bool) error {
 	if err != nil {
 		return err
 	}
-	if got != enabled {
-		return fmt.Errorf("port %d still reports flow control %v after being set to %v",
-			port, got, enabled)
+	if got != mode {
+		return fmt.Errorf("port %d still reports flow control %s after being set to %s",
+			port, got, mode)
 	}
 	return nil
 }
@@ -1177,6 +1221,10 @@ type PoEPort struct {
 	DetectMode     int  `json:"detectMode"`
 	DetectionDelay int  `json:"detectionDelay"`
 	IsBtPort       bool `json:"isBtPort"`
+
+	// Sched is the timer-schedule name, and is the literal "?" when unset -
+	// not an empty string. The UI sends "?" for "None".
+	Sched string `json:"sched"`
 }
 
 type PoEConfig struct {
@@ -1231,33 +1279,55 @@ func (c *Client) GetPoE() (PoEConfig, error) {
 	return out, err
 }
 
-// PoE WRITES ARE NOT IMPLEMENTED, AND THE ATTEMPT IS WORTH RECORDING so the
-// next person does not spend the same afternoon on it.
+// SetPoEPort changes one port's PoE settings.
 //
-// Reading works (GetPoE). Writing does not, and the endpoint is unusually
-// unhelpful about it. Tried against poe_port on firmware 1.1.1.9, carrying
-// state/priority/adminPower/powerLimitMode/detectMode/detectionDelay:
+// selEntry IS ZERO-BASED AND THERE IS NO PORT FIELD. Captured from the web
+// UI's own POST at Switching > Ports > POE after eight guessed field sets
+// failed: configuring port 8 sends selEntry=7. That single off-by-one is why
+// every earlier attempt either returned "error" (selEntry=8 selects port 9,
+// which has no PoE) or succeeded while changing nothing (a `port` field the
+// firmware ignores, and no row actually selected).
 //
-//	port=8                  -> status ok, priority unchanged (silent discard)
-//	port=8 & selPort=8      -> status ok, priority unchanged (silent discard)
-//	port=8 & selEntry=8     -> status "error"
-//	portId=8 & selEntry=8   -> status "error"
-//	selEntry=8              -> status "error"
+// The row is sent whole: state, priority, powerMode, detectMode,
+// detectionDelay and sched. Note adminPower is NOT among them - the UI does
+// not expose a per-port power ceiling on this model, so Max Power is derived
+// from the negotiated class and is read-only here.
 //
-// So selEntry - the row selector that mcast_igsVlan and mcast_igsQryVlan both
-// require - is actively REJECTED here, and without it the write is accepted
-// and dropped. The value field names are probably wrong too; poe_port's read
-// shape is not necessarily its write shape.
+// sched is the timer schedule name and is the literal string "?" when unset,
+// which is what the UI sends for "None".
 //
-// The way to settle it is the way the IGMP payload was settled: capture the
-// switch's own POST from Switching > PoE > Advanced in a browser and copy the
-// field set exactly. Guessing has now failed eight times across two endpoints
-// and is not worth a ninth.
-//
-// Deliberately NOT shipped as a Terraform resource in the meantime. A resource
-// whose apply silently does nothing is worse than no resource - and on ports
-// 1-4 a PoE write that goes wrong in the other direction hard-powers-off a
-// cluster node.
+// DISABLING A PORT CUTS ITS POWER. On ports 1-4 that hard-powers-off a
+// cluster node, with no shutdown - treat state=0 there as pulling the plug.
+func (c *Client) SetPoEPort(port int, p PoEPort) error {
+	sched := p.Sched
+	if sched == "" {
+		sched = "?"
+	}
+	if err := c.Set("poe_port", []Field{
+		{"state", fmt.Sprint(p.State)},
+		{"priority", fmt.Sprint(p.Priority)},
+		{"powerMode", fmt.Sprint(p.PowerMode)},
+		{"detectMode", fmt.Sprint(p.DetectMode)},
+		{"detectionDelay", fmt.Sprint(p.DetectionDelay)},
+		{"sched", sched},
+		{"selEntry", fmt.Sprint(port - 1)},
+	}); err != nil {
+		return err
+	}
+	cfg, err := c.GetPoE()
+	if err != nil {
+		return err
+	}
+	if port < 1 || port > len(cfg.Ports) {
+		return fmt.Errorf("port %d is not PoE-capable on this switch", port)
+	}
+	got := cfg.Ports[port-1]
+	if got.State != p.State || got.Priority != p.Priority {
+		return fmt.Errorf("port %d did not take the write: wanted state=%d priority=%d, "+
+			"device reports state=%d priority=%d", port, p.State, p.Priority, got.State, got.Priority)
+	}
+	return nil
+}
 
 // --- IGMP snooping querier, per VLAN ----------------------------------------
 //
