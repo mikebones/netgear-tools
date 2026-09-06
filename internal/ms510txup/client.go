@@ -978,10 +978,26 @@ func (c *Client) GetIGMPSnoopingVLAN(vlanID int) (*IGMPSnoopingVLAN, error) {
 
 // SetIGMPSnoopingVLAN enables or disables snooping on one VLAN.
 //
+// THE COMMAND IS mcast_igsVlan, NOT mcast_igsVlanAdd. The rows are not a list
+// you append to - all the switch's VLANs are already present as rows, created
+// and destroyed by the VLAN table, and this only edits one in place. Guessing
+// an Add variant gets a 404, which on this switch reads as "not authorised"
+// (see do) and sends you looking for a session problem that is not there.
+//
+// selEntry IS REQUIRED AND IS NOT A DUPLICATE OF vlanId. It names the row the
+// write applies to; vlanId is a field *of* that row. Omit it and the firmware
+// answers save_success and changes nothing - which is the whole reason this
+// took a packet capture to work out rather than a careful read of the reply.
+// Captured off the web UI's own POST at Switching > Multicast > IGMP Snooping
+// VLAN Configuration; the browser sends both, with the same value.
+//
 // The row carries several timers alongside the state. They are sent as read
 // rather than defaulted, because sending a zero for a timer the firmware
 // treats as "use this value" would silently reconfigure the querier while the
 // caller thought they were only flipping a switch.
+//
+// As everywhere on this device, save_success is not proof: read back with
+// GetIGMPSnoopingVLAN.
 func (c *Client) SetIGMPSnoopingVLAN(v IGMPSnoopingVLAN, enabled bool) error {
 	state := "0"
 	if enabled {
@@ -997,6 +1013,7 @@ func (c *Client) SetIGMPSnoopingVLAN(v IGMPSnoopingVLAN, enabled bool) error {
 		{"rptSuppEn", fmt.Sprint(v.ReportSuppEn)},
 		{"qryEn", fmt.Sprint(v.QuerierEn)},
 		{"qryIntvl", fmt.Sprint(v.QueryIntvl)},
+		{"selEntry", fmt.Sprint(v.VLANID)},
 	})
 }
 
