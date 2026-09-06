@@ -1411,3 +1411,93 @@ func (c *Client) SetIGMPQuerierVLAN(vlanID int, enabled bool) error {
 		{"selVid", fmt.Sprint(vlanID)},
 	})
 }
+
+// --- Green Ethernet (EEE) and the PoE budget --------------------------------
+//
+// Both found by watching the web UI's own requests. sys_greenProp is the
+// global Green Ethernet state and sys_greenIntf the per-port state; poe_conf
+// is the chassis PoE budget that poe_port does not carry.
+
+// GreenEthernet is the switch's Green Ethernet state, global or per port.
+//
+// EEE is 802.3az energy-efficient Ethernet: the PHY powers down between
+// frames. Energy is "auto power down", which idles a port with no link at
+// all. Both are 0 (off) on this switch, globally and on all eight ports, and
+// they are worth WATCHING rather than changing.
+//
+// EEE is off for a reason. Its wake latency shows up as jitter, and on an
+// unlucky PHY pairing as link flaps - symptoms nobody debugging a slow node
+// would trace back to a power-saving toggle. The four Pis and the AP all hang
+// off this switch, so the power it would save is not worth that risk. The
+// point of reading it is that a firmware upgrade turning it on becomes
+// visible; this switch has cleared its syslog host and SNTP server on an
+// upgrade before.
+type GreenEthernet struct {
+	EEE    int `json:"eee"`
+	Energy int `json:"energy"`
+}
+
+type greenIntfReply struct {
+	Ports []GreenEthernet `json:"ports"`
+}
+
+// GetGreenEthernet reads the global Green Ethernet state.
+func (c *Client) GetGreenEthernet() (GreenEthernet, error) {
+	var out GreenEthernet
+	err := c.Get("sys_greenProp", &out)
+	return out, err
+}
+
+// ListGreenEthernetPorts reads per-port Green Ethernet state, in front-panel
+// order. NOTE the rows carry no port number - position is the only identifier,
+// same as poe_port.
+func (c *Client) ListGreenEthernetPorts() ([]GreenEthernet, error) {
+	var out greenIntfReply
+	if err := c.Get("sys_greenIntf", &out); err != nil {
+		return nil, err
+	}
+	return out.Ports, nil
+}
+
+// PoEBudget is the chassis-level PoE state from poe_conf.
+//
+// THIS IS THE REAL BUDGET, and poe_port does not have it - poe_port's
+// adminPower_max is a per-port ceiling, which is a different number entirely
+// and was briefly exported as though it were headroom.
+type PoEBudget struct {
+	// Nominal and Consumed are WATTS as decimal STRINGS ("295.0", "49.9").
+	Nominal  string `json:"nominalPower"`
+	Consumed string `json:"consumedPower"`
+	// ThresholdPower is the watt figure at which shedding starts; Threshold is
+	// the same as a percentage of nominal.
+	ThresholdPower string `json:"thresholdPower"`
+	Threshold      int    `json:"threshold"`
+	// PowerMgmtMode is 1 static, 2 dynamic. Dynamic budgets against measured
+	// draw; static reserves each port's full class allocation.
+	PowerMgmtMode int `json:"pm"`
+	// OperStatus is an untranslated lang() key - use PoELangValue.
+	OperStatus string `json:"operStatus"`
+	TrapState  int    `json:"trapState"`
+	SWVersion  string `json:"swVer"`
+}
+
+type poeConfReply struct {
+	// Unintr is "uninterrupted PoE": power is kept up across a switch reboot.
+	// On this network that is what stops a firmware update from cold-booting
+	// all four cluster nodes, so it is worth knowing if it ever goes to 0.
+	Uninterrupted int         `json:"unintr"`
+	Units         []PoEBudget `json:"units"`
+}
+
+// GetPoEBudget reads the chassis PoE budget. The second return is the
+// uninterrupted-PoE flag, which is chassis-wide rather than per unit.
+func (c *Client) GetPoEBudget() (PoEBudget, bool, error) {
+	var out poeConfReply
+	if err := c.Get("poe_conf", &out); err != nil {
+		return PoEBudget{}, false, err
+	}
+	if len(out.Units) == 0 {
+		return PoEBudget{}, false, fmt.Errorf("poe_conf returned no units")
+	}
+	return out.Units[0], out.Uninterrupted == 1, nil
+}

@@ -141,6 +141,16 @@ type metrics struct {
 	poeStatusInfo *prometheus.GaugeVec
 	poeTotalW     prometheus.Gauge
 	poeBudgetW    prometheus.Gauge
+
+	poeNominalW    prometheus.Gauge
+	poeConsumedW   prometheus.Gauge
+	poeThresholdW  prometheus.Gauge
+	poeMgmtMode    prometheus.Gauge
+	poeUninterrupt prometheus.Gauge
+
+	eeeGlobal  *prometheus.GaugeVec
+	eeePort    *prometheus.GaugeVec
+	energyPort *prometheus.GaugeVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -220,9 +230,31 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			"table in the query.", "port", "status", "fault", "class"),
 		poeTotalW: f.gauge("poe_total_power_watts", "Sum of power delivered across all PoE ports. Compare "+
 			"against poe_budget_watts for headroom."),
-		poeBudgetW: f.gauge("poe_budget_watts", "The switch's configurable per-port maximum, reported as "+
-			"the closest thing this firmware exposes to a budget figure. NOT the chassis PoE budget, which "+
-			"poe_port does not report - do not read it as headroom on its own."),
+		poeBudgetW: f.gauge("poe_port_admin_power_max_watts", "The per-port power CEILING, not a budget. "+
+			"Renamed from poe_budget_watts, which was wrong: this is poe_port's adminPower_max and says "+
+			"nothing about chassis headroom. The real budget is poe_nominal_power_watts."),
+
+		poeNominalW: f.gauge("poe_nominal_power_watts", "The chassis PoE budget in watts - what the power "+
+			"supply can actually deliver across all ports. From poe_conf; poe_port does not carry it."),
+		poeConsumedW: f.gauge("poe_consumed_power_watts", "Total PoE draw as the switch itself measures it. "+
+			"Compare against poe_nominal_power_watts for true headroom."),
+		poeThresholdW: f.gauge("poe_threshold_power_watts", "Draw at which the switch starts shedding ports, "+
+			"lowest priority first. Crossing this is the event that makes per-port priority matter."),
+		poeMgmtMode: f.gauge("poe_power_management_mode", "1 static, 2 dynamic. Static reserves each port's "+
+			"full class allocation whether or not the device draws it; dynamic budgets against measured "+
+			"draw, so it fits more devices in the same envelope."),
+		poeUninterrupt: f.gauge("poe_uninterrupted_enabled", "1 if PoE is held up across a switch reboot. "+
+			"THIS IS WHY A FIRMWARE UPDATE DOES NOT COLD-BOOT THE CLUSTER - all four Pi nodes are powered "+
+			"by this switch, so a 0 here turns any switch restart into a simultaneous hard power cut."),
+
+		eeeGlobal: f.vec("green_ethernet_enabled", "1 if the setting is on globally. `eee` is 802.3az "+
+			"energy-efficient Ethernet, `energy` is auto power down. Both are OFF here deliberately: EEE's "+
+			"wake latency shows up as jitter and, on unlucky PHY pairings, link flaps - and the four Pis "+
+			"and the AP all hang off this switch. Exported to catch a firmware upgrade turning it on.",
+			"setting"),
+		eeePort: f.vec("green_ethernet_eee_port_enabled", "1 if 802.3az EEE is on for this port.", "port"),
+		energyPort: f.vec("green_ethernet_auto_power_down_port_enabled", "1 if auto power down is on for "+
+			"this port - it idles a port that has no link.", "port"),
 	}
 }
 
@@ -416,6 +448,41 @@ func (p *poller) poll() {
 		}
 		p.m.poeTotalW.Set(float64(totalMW) / 1000)
 		p.m.poeBudgetW.Set(float64(poe.AdminPowerMax) / 1000)
+	}
+
+	if b, unintr, err := p.c.GetPoEBudget(); err != nil {
+		fail("GetPoEBudget", err)
+	} else {
+		// Watt figures arrive as decimal STRINGS.
+		setW := func(g prometheus.Gauge, s string) {
+			if v, err := strconv.ParseFloat(strings.TrimSpace(s), 64); err == nil {
+				g.Set(v)
+			}
+		}
+		setW(p.m.poeNominalW, b.Nominal)
+		setW(p.m.poeConsumedW, b.Consumed)
+		setW(p.m.poeThresholdW, b.ThresholdPower)
+		p.m.poeMgmtMode.Set(float64(b.PowerMgmtMode))
+		p.m.poeUninterrupt.Set(b2f(unintr))
+	}
+
+	if g, err := p.c.GetGreenEthernet(); err != nil {
+		fail("GetGreenEthernet", err)
+	} else {
+		p.m.eeeGlobal.WithLabelValues("eee").Set(b2f(g.EEE == 1))
+		p.m.eeeGlobal.WithLabelValues("energy").Set(b2f(g.Energy == 1))
+	}
+	if ports, err := p.c.ListGreenEthernetPorts(); err != nil {
+		fail("ListGreenEthernetPorts", err)
+	} else {
+		p.m.eeePort.Reset()
+		p.m.energyPort.Reset()
+		for i, g := range ports {
+			// These rows carry no port number; position is the only id.
+			port := strconv.Itoa(i + 1)
+			p.m.eeePort.WithLabelValues(port).Set(b2f(g.EEE == 1))
+			p.m.energyPort.WithLabelValues(port).Set(b2f(g.Energy == 1))
+		}
 	}
 
 	p.m.scrapeDur.Set(time.Since(start).Seconds())
