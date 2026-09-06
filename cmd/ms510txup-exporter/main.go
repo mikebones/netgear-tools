@@ -125,8 +125,9 @@ type metrics struct {
 	linkDowns  *prometheus.GaugeVec
 	counterAge *prometheus.GaugeVec
 
-	igmpGlobal *prometheus.GaugeVec
-	igmpVLAN   *prometheus.GaugeVec
+	igmpGlobal  *prometheus.GaugeVec
+	igmpVLAN    *prometheus.GaugeVec
+	igmpQuerier *prometheus.GaugeVec
 
 	poePowerW     *prometheus.GaugeVec
 	poeCurrentA   *prometheus.GaugeVec
@@ -181,6 +182,11 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			"discovery that is a constant tax on every attached NIC.", "scope"),
 		igmpVLAN: f.vec("igmp_snooping_vlan_enabled", "1 if IGMP snooping is enabled on this VLAN. Enabling "+
 			"it globally does NOT enable it per VLAN, and a VLAN left off still floods.", "vlan"),
+		igmpQuerier: f.vec("igmp_querier_vlan_enabled", "1 if the switch sends IGMP queries on this VLAN. "+
+			"THE THIRD FLAG, and the one that makes the other two mean anything: with no querier nothing "+
+			"prompts membership reports, the snooping table never populates, and the switch floods anyway. "+
+			"The global querier enable is separate and reading 1 there does NOT mean queries are being "+
+			"sent - verified by capture, which saw zero IGMP frames until this was set.", "vlan"),
 
 		// PoE. Ports 1-4 power the four Raspberry Pi 5 cluster nodes, so this
 		// is node-availability data, not facilities trivia: a port that stops
@@ -341,6 +347,22 @@ func (p *poller) poll() {
 		p.m.igmpVLAN.Reset()
 		for _, v := range vs {
 			p.m.igmpVLAN.WithLabelValues(strconv.Itoa(v.VLANID)).Set(b2f(v.State == 1))
+		}
+	}
+
+	if en, all, err := p.c.ListIGMPQuerierVLANs(); err != nil {
+		fail("ListIGMPQuerierVLANs", err)
+	} else {
+		on := map[int]bool{}
+		for _, v := range en {
+			on[v] = true
+		}
+		p.m.igmpQuerier.Reset()
+		// Every VLAN the switch knows, not just the enabled ones - a VLAN
+		// that silently drops off the querier list has to show as 0 rather
+		// than vanish, or the graph looks unchanged.
+		for _, v := range all {
+			p.m.igmpQuerier.WithLabelValues(strconv.Itoa(v)).Set(b2f(on[v]))
 		}
 	}
 
