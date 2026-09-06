@@ -168,7 +168,12 @@ func (c *Client) post(payload any, headers map[string]string) (http.Header, []by
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal request: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, c.endpoint+"/socketCommunication", bytes.NewReader(body))
+	path := "/socketCommunication"
+	if p, ok := headers["__path"]; ok {
+		path = p
+		delete(headers, "__path")
+	}
+	req, err := http.NewRequest(http.MethodPost, c.endpoint+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -593,4 +598,99 @@ func (c *Client) GetSSIDDetails() (SSIDDetails, error) {
 		return nil, err
 	}
 	return SSIDDetails(out.System.WlanSettings.WlanSettingTable), nil
+}
+
+// --- firmware upgrade -------------------------------------------------------
+//
+// THE UPGRADE API IS NOT ON /socketCommunication. It posts to /LogFile, which
+// is not a name anybody would guess and is the reason this went undiscovered
+// until the web UI's own XHR was hooked. It also does not use the
+// query-by-example shape the rest of this client speaks; it takes a numeric
+// method code.
+//
+//	{"method":7,"fwUpgrade":0}  start the online upgrade
+//	{"method":6,"fwPercent":N}  poll progress
+//
+// PERCENT IS NOT A PERCENTAGE. 100 means the image finished downloading, and
+// 110 is an out-of-range SENTINEL meaning the flash failed - the UI turns it
+// into "An error occurred while updating the firmware" with no further detail.
+// Anything above 100 is a failure code, not progress.
+//
+// Observed on V10.8.10.10 offered V12.8.0.6: the download reaches 100 and then
+// every subsequent poll returns 110. The image transfers fine; applying it is
+// what fails, which points at a version-jump restriction rather than a bad
+// file or a network problem. The local-upload path refuses the same image as a
+// "downgrade" requiring a factory reset, which is consistent with the AP
+// mishandling the major version when comparing 12.8.0.6 against 10.8.10.10.
+const (
+	fwMethodStart = 7
+	fwMethodPoll  = 6
+
+	// FirmwareDownloadComplete is the percent value meaning the transfer
+	// finished. Values ABOVE it are failures.
+	FirmwareDownloadComplete = 100
+	// FirmwareFailed is the sentinel the firmware returns when the flash
+	// fails after a successful download.
+	FirmwareFailed = 110
+)
+
+type fwProgressReply struct {
+	Status  int `json:"status"`
+	Percent int `json:"percent"`
+}
+
+// FirmwareProgress is one poll of an in-flight upgrade.
+type FirmwareProgress struct {
+	Percent int
+}
+
+// Downloading reports whether the image is still transferring.
+func (p FirmwareProgress) Downloading() bool { return p.Percent < FirmwareDownloadComplete }
+
+// Failed reports whether the AP has given up. See the sentinel note above:
+// any percent beyond 100 is an error code rather than progress.
+func (p FirmwareProgress) Failed() bool { return p.Percent > FirmwareDownloadComplete }
+
+func (c *Client) fwPost(payload any, out any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.token == "" {
+		if err := c.login(); err != nil {
+			return err
+		}
+		if !c.keepAlive {
+			defer c.logoutLocked()
+		}
+	}
+	_, raw, err := c.post(payload, map[string]string{"__path": "/LogFile", "security": c.token})
+	if err != nil {
+		return err
+	}
+	if out == nil {
+		return nil
+	}
+	return json.Unmarshal(raw, out)
+}
+
+// GetFirmwareProgress polls an in-flight upgrade.
+func (c *Client) GetFirmwareProgress() (FirmwareProgress, error) {
+	var r fwProgressReply
+	if err := c.fwPost(map[string]any{"method": fwMethodPoll, "fwPercent": 1}, &r); err != nil {
+		return FirmwareProgress{}, err
+	}
+	return FirmwareProgress{Percent: r.Percent}, nil
+}
+
+// StartFirmwareUpgrade begins the ONLINE upgrade: the AP fetches the image
+// NETGEAR advertises and flashes it itself.
+//
+// DESTRUCTIVE AND SLOW. The AP reboots on success and every wireless client
+// drops. Check GetFirmwareStatus().UpgradeAvailable() first, and back up the
+// wireless configuration with GetSSIDDetails() before calling this - a failed
+// or forced upgrade on this device can end in a factory reset, which loses
+// every SSID and passphrase.
+//
+// Returns immediately; poll GetFirmwareProgress for the outcome.
+func (c *Client) StartFirmwareUpgrade() error {
+	return c.fwPost(map[string]any{"method": fwMethodStart, "fwUpgrade": 0}, nil)
 }
