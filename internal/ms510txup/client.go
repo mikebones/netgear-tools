@@ -45,6 +45,7 @@
 package ms510txup
 
 import (
+	"bytes"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
@@ -317,6 +318,29 @@ func (c *Client) ensure() error {
 	return c.login()
 }
 
+// dropSession forgets the current session so the next ensure() logs in again.
+// Callers hold c.mu.
+func (c *Client) dropSession() {
+	c.tabid, c.pub, c.xsrf = "", nil, ""
+}
+
+// deadSession reports whether a reply means "your session is gone" rather than
+// anything about the command.
+//
+// THE SWITCH DOES NOT SAY SO. When it has invalidated a session - which it does
+// on its own once its small session table fills, not only on logout - it
+// answers with an EMPTY BODY and HTTP 200. json.Unmarshal then fails with
+// "unexpected end of JSON input", which reads like a firmware quirk in the
+// command rather than an auth problem.
+//
+// Without this the client wedges permanently: ensure() sees a non-empty tabid,
+// decides a session exists, and every subsequent call fails the same way
+// forever. Observed 2026-09-06 - the exporter failed every poll for half an
+// hour and only a pod restart fixed it.
+func deadSession(raw []byte) bool {
+	return len(bytes.TrimSpace(raw)) == 0
+}
+
 // envelope is the shape every CGI reply shares.
 type envelope struct {
 	Data   json.RawMessage `json:"data"`
@@ -340,6 +364,21 @@ func (c *Client) getLocked(cmd string, out any) error {
 	raw, err := c.do("cgi/get.cgi?cmd="+cmd, "", false)
 	if err != nil {
 		return err
+	}
+	// An empty body means the session died under us. Log in again and retry
+	// ONCE - once only, so a genuinely empty reply cannot become a login loop
+	// against a device whose session table is already the problem.
+	if deadSession(raw) {
+		c.dropSession()
+		if err := c.ensure(); err != nil {
+			return fmt.Errorf("%s: session expired and re-login failed: %w", cmd, err)
+		}
+		if raw, err = c.do("cgi/get.cgi?cmd="+cmd, "", false); err != nil {
+			return err
+		}
+		if deadSession(raw) {
+			return fmt.Errorf("%s: empty reply even after re-login", cmd)
+		}
 	}
 	var env envelope
 	if err := json.Unmarshal(raw, &env); err != nil {
