@@ -1618,3 +1618,44 @@ func (c *Client) GetFirmwareUpdateStatus() (FirmwareDownloadStatus, error) {
 	err := c.Get("file_fwUpdateStatus", &out)
 	return out, err
 }
+
+// --- spanning tree ----------------------------------------------------------
+//
+// WHY THIS IS WORTH READING even though nothing here needs configuring: the
+// topology-change counter is an instability signal that nothing else on this
+// network exposes. Every STP topology change means a link went away or came
+// back somewhere in the L2 domain, and each one briefly disrupts forwarding.
+// A port that flaps shows up here as well as in its own link-down counter, but
+// this one catches flaps on the OTHER switch too.
+//
+// Found healthy on first read: RSTP enabled, converged, with the XS508TM as
+// root bridge - which is the sensible outcome, the 10G switch being root.
+type STPConfig struct {
+	// OperMode is "rstp", "stp" or "mstp".
+	OperMode string `json:"operMode"`
+	State    bool   `json:"state"`
+
+	BridgeID string `json:"bridgeId"`
+	// DesignatedRootBridgeID equals BridgeID when THIS switch is root.
+	DesignatedRootBridgeID string `json:"desgRootBridgeId"`
+	DesignatedRootCost     int    `json:"desgRootCost"`
+
+	// TopologyChanges counts convergence events since boot. Rising = something
+	// is flapping. TopologyChanging is true only during a change.
+	TopologyChanges  int  `json:"tcCount"`
+	TopologyChanging bool `json:"tc"`
+
+	BPDUForwarding bool `json:"bpduFwd"`
+}
+
+// IsRoot reports whether this switch is the spanning-tree root bridge.
+func (s STPConfig) IsRoot() bool {
+	return s.BridgeID != "" && s.BridgeID == s.DesignatedRootBridgeID
+}
+
+// GetSTP reads the spanning-tree configuration and convergence state.
+func (c *Client) GetSTP() (STPConfig, error) {
+	var out STPConfig
+	err := c.Get("stp_conf", &out)
+	return out, err
+}

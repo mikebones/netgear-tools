@@ -154,6 +154,12 @@ type metrics struct {
 
 	fwInfo   *prometheus.GaugeVec
 	fwStaged prometheus.Gauge
+
+	stpEnabled  prometheus.Gauge
+	stpIsRoot   prometheus.Gauge
+	stpRootCost prometheus.Gauge
+	stpTopoChg  prometheus.Gauge
+	stpInfo     *prometheus.GaugeVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -262,6 +268,21 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		fwInfo: f.vec("firmware_info", "Always 1. Carries both image slots and which one is running vs "+
 			"which boots next. The switch keeps TWO images, so 'the firmware version' is two answers.",
 			"active", "next_active", "image1", "image2"),
+		stpEnabled: f.gauge("stp_enabled", "1 if spanning tree is running. With a single path between "+
+			"switches STP does nothing day to day, which is exactly why it goes unnoticed if it stops - "+
+			"and an accidental loop on a flat LAN carrying the cluster is not a recoverable afternoon."),
+		stpIsRoot: f.gauge("stp_is_root_bridge", "1 if THIS switch is the spanning-tree root. Normally 0 "+
+			"here: the 10G XS508TM is root, which is the sensible topology. This flipping means the root "+
+			"election changed, i.e. the other switch went away."),
+		stpRootCost: f.gauge("stp_root_path_cost", "Path cost from this switch to the root bridge. A "+
+			"change means the path to root changed - a link died or a new one appeared."),
+		stpTopoChg: f.gauge("stp_topology_changes_total", "Spanning-tree topology changes since boot. "+
+			"THE INSTABILITY SIGNAL: each one means a link somewhere in the L2 domain went away or came "+
+			"back, and each briefly disrupts forwarding. Catches flaps on the OTHER switch too, which "+
+			"per-port link-down counters here cannot see. Resets to 0 on reboot, so use increase()."),
+		stpInfo: f.vec("stp_info", "Always 1. Carries the STP mode and the bridge IDs as labels.",
+			"mode", "bridge_id", "root_bridge_id"),
+
 		fwStaged: f.gauge("firmware_staged", "1 when the next-active image differs from the running one - "+
 			"an upgrade has been FLASHED AND IS WAITING FOR A REBOOT. "+
 			"This is the metric worth alerting on. A staged switch is armed: any restart, including an "+
@@ -476,6 +497,17 @@ func (p *poller) poll() {
 		setW(p.m.poeThresholdW, b.ThresholdPower)
 		p.m.poeMgmtMode.Set(float64(b.PowerMgmtMode))
 		p.m.poeUninterrupt.Set(b2f(unintr))
+	}
+
+	if stp, err := p.c.GetSTP(); err != nil {
+		fail("GetSTP", err)
+	} else {
+		p.m.stpEnabled.Set(b2f(stp.State))
+		p.m.stpIsRoot.Set(b2f(stp.IsRoot()))
+		p.m.stpRootCost.Set(float64(stp.DesignatedRootCost))
+		p.m.stpTopoChg.Set(float64(stp.TopologyChanges))
+		p.m.stpInfo.Reset()
+		p.m.stpInfo.WithLabelValues(stp.OperMode, stp.BridgeID, stp.DesignatedRootBridgeID).Set(1)
 	}
 
 	if fw, err := p.c.GetFirmware(); err != nil {
