@@ -493,3 +493,104 @@ func (c *Client) SetAdminPassword(newPassword string) error {
 		},
 	}, nil)
 }
+
+// --- firmware ---------------------------------------------------------------
+//
+// The AP checks NETGEAR for updates on its own and caches the answer under
+// system.FwUpdate. That subtree is NOT discoverable by probing: this API is
+// query-by-example and an unrecognised key echoes back an empty object rather
+// than erroring, so a wrong guess is indistinguishable from "no such setting".
+// Every guess at system.maintenance.firmware, firmwareUpgrade and the like
+// came back empty. The real path was found by hooking the web UI's own XHR.
+//
+// THE FIELD THAT MATTERS IS ImageAvailable. system.monitor.newVersion exists
+// but reads the literal string "Invalid String" until a check has run, which
+// looks like a parse failure and is really just "not checked yet".
+type FirmwareStatus struct {
+	// ImageAvailable is "1" when a newer release exists.
+	ImageAvailable string `json:"ImageAvailable"`
+	// ImageVersion is the AVAILABLE version, e.g. "V12.8.0.6" - not the
+	// running one, which is system.monitor.sysVersion.
+	ImageVersion    string `json:"ImageVersion"`
+	LastCheckedDate string `json:"LastcheckedDate"`
+	ReleaseNotesURL string `json:"releasenotesurl"`
+}
+
+type firmwareEnvelope struct {
+	System struct {
+		FwUpdate FirmwareStatus `json:"FwUpdate"`
+	} `json:"system"`
+}
+
+// UpgradeAvailable reports whether the AP believes a newer release exists.
+func (f FirmwareStatus) UpgradeAvailable() bool { return f.ImageAvailable == "1" }
+
+// GetFirmwareStatus reads the AP's cached view of available firmware.
+//
+// USE THIS BEFORE UPLOADING AN IMAGE BY HAND. The AP compares whatever file it
+// is given against its running version and warns about a DOWNGRADE - including
+// a factory reset and loss of every wireless setting - if it cannot read a
+// newer version out of that file. A .zip straight from the download page will
+// do exactly that, because the archive wraps the real image; the file to
+// upload is the .tar inside it. When ImageAvailable is "1" the AP can fetch
+// the correct image itself and no upload is needed at all.
+func (c *Client) GetFirmwareStatus() (FirmwareStatus, error) {
+	var out firmwareEnvelope
+	err := c.Call(map[string]any{
+		"system": map[string]any{
+			"FwUpdate": map[string]any{
+				"ImageAvailable": "", "ImageVersion": "",
+				"LastcheckedDate": "", "releasenotesurl": "",
+			},
+		},
+	}, &out)
+	return out.System.FwUpdate, err
+}
+
+// --- SSIDs ------------------------------------------------------------------
+//
+// WHY THIS EXISTS: the AP's wireless configuration is the only device state on
+// this network with no record anywhere outside the device itself. A factory
+// reset - which a mis-handled firmware upload will offer to perform - loses
+// every SSID, passphrase, VLAN binding and radio setting, and re-onboarding
+// every wireless client is the kind of afternoon worth spending an API call to
+// avoid.
+//
+// The SSIDs live at system.vapSettings.vapSettingTable.wlanN.vapM, three
+// radios by eight virtual APs. Enumerating that by hand is 24 lookups; the web
+// UI instead asks wlanSettings.wlanSettingTable.ssidGetDetails, which returns
+// the populated ones in one call. That key is a REQUEST FLAG, not a stored
+// setting - it does not appear in the reply.
+type SSIDDetails map[string]any
+
+type ssidEnvelope struct {
+	System struct {
+		WlanSettings struct {
+			WlanSettingTable map[string]any `json:"wlanSettingTable"`
+		} `json:"wlanSettings"`
+	} `json:"system"`
+}
+
+// GetSSIDDetails returns every configured SSID as the device reports it.
+//
+// Returned as a loose map on purpose. The per-SSID field set is large and
+// firmware-dependent - captive portal, scheduling, bandwidth limits, MPSK and
+// 802.1x each add their own keys - and modelling it as a struct would silently
+// drop whatever this firmware happens to add. For capture-before-reset the
+// point is to lose nothing, so nothing is filtered.
+//
+// CONTAINS SECRETS. Passphrases are in here. Persist the result somewhere that
+// deserves them - Vault, not a git repo, and not a terminal scrollback.
+func (c *Client) GetSSIDDetails() (SSIDDetails, error) {
+	var out ssidEnvelope
+	if err := c.Call(map[string]any{
+		"system": map[string]any{
+			"wlanSettings": map[string]any{
+				"wlanSettingTable": map[string]any{"ssidGetDetails": ""},
+			},
+		},
+	}, &out); err != nil {
+		return nil, err
+	}
+	return SSIDDetails(out.System.WlanSettings.WlanSettingTable), nil
+}
