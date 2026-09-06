@@ -1108,3 +1108,116 @@ func (c *Client) SetAdminPassword(oldPassword, newPassword string) error {
 	c.mu.Unlock()
 	return nil
 }
+
+// --- port settings ----------------------------------------------------------
+//
+// getPortSettings / setPortSettings, and this was the last uncodified corner
+// of the router. It carries four things worth declaring, none of which appear
+// anywhere else in this client:
+//
+//   - EEE (802.3az energy-efficient Ethernet). Off on every port here, and
+//     worth PINNING rather than assuming: EEE powers the PHY down between
+//     frames and its wake latency shows up as jitter and, on unlucky
+//     pairings, link flaps. A firmware reset that turned it on would produce
+//     symptoms nobody would connect back to a power-saving setting.
+//   - 802.3x flow control. Off on every port.
+//   - Link speed, which is "auto" everywhere. The interesting part is what
+//     each port CAN do - the supported list differs per port and contradicts
+//     the alarm log (see LinkSpeed below).
+//   - rxCompensation, an undocumented receive-path tuning knob with at least
+//     "default" and "enhanced". lan4 and lan5 ship on "enhanced".
+type PortSettings struct {
+	// Port is the device's own name: wan1, lan1..lan5. Not an index.
+	Port string `json:"port"`
+	// Type is "copper" or "sfp_plus". THE PORT LAYOUT IS NOT UNIFORM:
+	// lan4 is SFP+, lan5 is multi-gig copper, the rest are gigabit copper.
+	Type string `json:"type"`
+
+	SupportEEE int `json:"supportEEE"`
+	EnableEEE  int `json:"enableEEE"`
+
+	SupportFlowControl int `json:"supportFlowControl"`
+	EnableFlowControl  int `json:"enableFlowControl"`
+
+	RxCompensation string `json:"rxCompensation"`
+
+	// LinkSpeed is the CONFIGURED setting ("auto"), not the negotiated
+	// result - for that use GetWiredPortLinkDetails.
+	//
+	// SupportLinkSpeed is per-port and worth reading before believing the
+	// alarm log. The router logs "Port WAN link up at 1 Gbps (max supported:
+	// 2.5 Gbps)", but wan1's settable list here is auto/100 Mbps/1 Gbps -
+	// there is no 2.5 Gbps to select. lan5 is the only port offering 2.5 and
+	// 5 Gbps; lan4, being SFP+, offers 10 Gbps and 1 Gbps and nothing in
+	// between.
+	LinkSpeed             string   `json:"linkSpeed"`
+	SupportLinkSpeed      []string `json:"supportLinkSpeed"`
+	SupportLinkSpeedFlags int      `json:"supportLinkSpeedFlags"`
+}
+
+// GetPortSettings reads every port's settings.
+func (c *Client) GetPortSettings() ([]PortSettings, error) {
+	var out []PortSettings
+	if err := c.CallResult("getPortSettings", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetPortSetting returns one port by name, or nil if the router has no such
+// port. Names are wan1 and lan1..lan5.
+func (c *Client) GetPortSetting(name string) (*PortSettings, error) {
+	all, err := c.GetPortSettings()
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if strings.EqualFold(all[i].Port, name) {
+			return &all[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// SetPortSettings writes one port's settings.
+//
+// TAKES AN ARRAY OF COMPLETE OBJECTS. Verified against firmware 3.0.0.105 by
+// writing to the unused lan1 and reading back: an array of full objects
+// applies, while a single bare object, a {"portSettings": [...]} wrapper, and
+// an array carrying only the changed field all return success and change
+// nothing. The silent-discard-on-partial-payload behaviour is the same trap
+// as the switches'.
+//
+// So callers should read, modify one field, and write the whole struct back -
+// which is what the Terraform resource does. Sending a partial object is not
+// an error, it is a no-op that looks like success.
+func (c *Client) SetPortSettings(p PortSettings) error {
+	payload := []map[string]any{{
+		"port":              p.Port,
+		"enableEEE":         p.EnableEEE,
+		"enableFlowControl": p.EnableFlowControl,
+		"rxCompensation":    p.RxCompensation,
+		"linkSpeed":         p.LinkSpeed,
+	}}
+	var out json.RawMessage
+	if err := c.CallResult("setPortSettings", payload, &out); err != nil {
+		return err
+	}
+	// Read back: success here is not evidence, as above.
+	got, err := c.GetPortSetting(p.Port)
+	if err != nil {
+		return err
+	}
+	if got == nil {
+		return fmt.Errorf("port %q disappeared after the write", p.Port)
+	}
+	if got.EnableEEE != p.EnableEEE || got.EnableFlowControl != p.EnableFlowControl ||
+		!strings.EqualFold(got.RxCompensation, p.RxCompensation) ||
+		!strings.EqualFold(got.LinkSpeed, p.LinkSpeed) {
+		return fmt.Errorf("port %s did not take the write: wanted EEE=%d fc=%d rxComp=%s speed=%s, "+
+			"device reports EEE=%d fc=%d rxComp=%s speed=%s",
+			p.Port, p.EnableEEE, p.EnableFlowControl, p.RxCompensation, p.LinkSpeed,
+			got.EnableEEE, got.EnableFlowControl, got.RxCompensation, got.LinkSpeed)
+	}
+	return nil
+}

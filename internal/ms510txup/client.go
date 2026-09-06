@@ -863,6 +863,71 @@ func (c *Client) SetPortMaxFrame(port, size int) error {
 	return nil
 }
 
+// GetPortFlowControl reports whether 802.3x flow control is on for a port.
+func (c *Client) GetPortFlowControl(port int) (bool, error) {
+	var cfg struct {
+		Ports []struct {
+			IfIndex  int `json:"ifIndex"`
+			FlowCtrl int `json:"flowCtrl"`
+		} `json:"ports"`
+	}
+	if err := c.Get("port_port", &cfg); err != nil {
+		return false, err
+	}
+	for i, p := range cfg.Ports {
+		idx := p.IfIndex
+		if idx == 0 {
+			idx = i + 1
+		}
+		if idx == port {
+			return p.FlowCtrl == 1, nil
+		}
+	}
+	return false, fmt.Errorf("port %d not found", port)
+}
+
+// SetPortFlowControl turns 802.3x flow control on or off for one port.
+//
+// WHAT IT ACTUALLY DOES, because the name oversells it: under congestion the
+// switch sends PAUSE frames to the link partner, which stops sending for a
+// requested interval. It converts a drop into a delay.
+//
+// That is not free, and it is not obviously good. PAUSE is per-LINK, not per
+// flow or per queue: one congested destination pauses EVERYTHING coming from
+// that neighbour, including traffic bound elsewhere. That is head-of-line
+// blocking, and on a switch carrying storage traffic it can turn one slow
+// receiver into a network-wide stall.
+//
+// It also only works if BOTH ENDS have it enabled and autonegotiated it. A
+// switch port with flow control on, talking to a NIC with it off, does
+// nothing at all - which is the usual reason "we turned it on and nothing
+// changed" gets misread as "it did not help".
+//
+// Measure before enabling. The symptom it addresses is receiver overrun,
+// which on Linux is node_network_receive_fifo_total; if that is flat, there
+// is nothing here to win.
+func (c *Client) SetPortFlowControl(port int, enabled bool) error {
+	v := "0"
+	if enabled {
+		v = "1"
+	}
+	if err := c.Set("port_port", []Field{
+		{"port", fmt.Sprint(port)},
+		{"flowCtrl", v},
+	}); err != nil {
+		return err
+	}
+	got, err := c.GetPortFlowControl(port)
+	if err != nil {
+		return err
+	}
+	if got != enabled {
+		return fmt.Errorf("port %d still reports flow control %v after being set to %v",
+			port, got, enabled)
+	}
+	return nil
+}
+
 // PASSWORD CHANGE IS NOT IMPLEMENTED HERE, AND THE REASON IS WORTH RECORDING.
 //
 // This client speaks the switch's HTTP interface, where the admin credential
