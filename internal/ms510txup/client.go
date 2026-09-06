@@ -59,6 +59,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1071,5 +1073,201 @@ func (c *Client) SetIGMPQuerier(q IGMPQuerier, enabled bool) error {
 		{"igmpVer", fmt.Sprint(q.Version)},
 		{"igsQryIntvl", fmt.Sprint(q.Interval)},
 		{"igsQryExpIntvl", fmt.Sprint(q.ExpInterval)},
+	})
+}
+
+// --- PoE -------------------------------------------------------------------
+//
+// THE FOUR PIS RUN ON THIS. Ports 1-4 feed the cluster's Raspberry Pi 5 nodes
+// over PoE, so a fault, a budget squeeze or a renegotiation here is not a
+// peripheral concern - it is a node reboot. That is the reason this exists:
+// per-port draw is the only place the cluster's power story is visible at all.
+//
+// The endpoint is poe_port. Not poe_poePortCfg, poe_poeGlobalCfg,
+// poe_poeStatus or any of the other plausible names - all of those 404.
+type PoEPort struct {
+	// Power and MaxPower arrive as STRINGS of milliwatts, not numbers, so
+	// they cannot be typed as int without failing to decode. Amphere (the
+	// firmware's spelling) is milliamps and Voltage is whole volts - the
+	// units are not consistent across these three fields.
+	Power      string `json:"power"`
+	MaxPower   string `json:"maxPower"`
+	AdminPower string `json:"adminPower"`
+	Amphere    int    `json:"amphere"`
+	Voltage    int    `json:"voltage"`
+
+	// Class, Status and Fault come back as UNTRANSLATED UI LOOKUP KEYS, e.g.
+	// "lang('poe','txtPortStatusDelivering')" rather than "Delivering". The
+	// device is handing back the string the web UI would localise. Use
+	// PoELangValue to get the bare token.
+	Class  string `json:"class"`
+	Status string `json:"status"`
+	Fault  string `json:"fault"`
+
+	State          int  `json:"state"`
+	Priority       int  `json:"priority"`
+	PowerMode      int  `json:"powerMode"`
+	PowerLimitMode int  `json:"powerLimitMode"`
+	HighPower      int  `json:"highPower"`
+	DetectMode     int  `json:"detectMode"`
+	DetectionDelay int  `json:"detectionDelay"`
+	IsBtPort       bool `json:"isBtPort"`
+}
+
+type PoEConfig struct {
+	AdminPowerMax int       `json:"adminPower_max"`
+	AdminPowerMin int       `json:"adminPower_min"`
+	Ports         []PoEPort `json:"ports"`
+}
+
+var poeLangRe = regexp.MustCompile(`^lang\('[^']*',\s*'([^']*)'\)$`)
+
+// PoELangValue strips the firmware's UI-lookup wrapper and the redundant
+// prefix the keys carry, turning
+//
+//	lang('poe','txtPortStatusDelivering') -> Delivering
+//	lang('poe','txtPortFaultNone')        -> None
+//	lang('poe','txtPortClass4')           -> 4
+//
+// A value that is not wrapped is returned unchanged, so this is safe to apply
+// to anything and to firmware that stops doing it.
+func PoELangValue(s string) string {
+	m := poeLangRe.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return strings.TrimSpace(s)
+	}
+	v := m[1]
+	v = strings.TrimPrefix(v, "txt")
+	for _, p := range []string{"PortStatus", "PortFault", "PortClass", "Port"} {
+		if strings.HasPrefix(v, p) {
+			return strings.TrimPrefix(v, p)
+		}
+	}
+	return v
+}
+
+// PoEMilliwatts parses one of the string-typed power fields. A blank or
+// unparseable value reads as 0 rather than an error: these are gauge readings
+// for a metric, and one unreadable port should not fail the whole poll.
+func PoEMilliwatts(s string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// GetPoE reads the PoE table. Ports are returned in front-panel order, so
+// index 0 is port 1; only the PoE-capable ports appear (8 of the 10 here -
+// the two 10G uplinks do not deliver power).
+func (c *Client) GetPoE() (PoEConfig, error) {
+	var out PoEConfig
+	err := c.Get("poe_port", &out)
+	return out, err
+}
+
+// SetPoEPort changes one port's PoE settings.
+//
+// selEntry names the row, exactly as it does for the IGMP snooping VLAN
+// table - see SetIGMPSnoopingVLAN for why that is not optional and what its
+// absence looks like (save_success, and nothing changes).
+//
+// DISABLING A PORT CUTS ITS POWER. On ports 1-4 that means hard-powering-off
+// a cluster node, with no shutdown - treat state=0 there as equivalent to
+// pulling the plug.
+func (c *Client) SetPoEPort(port int, p PoEPort) error {
+	return c.Set("poe_port", []Field{
+		{"portId", fmt.Sprint(port)},
+		{"state", fmt.Sprint(p.State)},
+		{"priority", fmt.Sprint(p.Priority)},
+		{"powerMode", fmt.Sprint(p.PowerMode)},
+		{"powerLimitMode", fmt.Sprint(p.PowerLimitMode)},
+		{"adminPower", p.AdminPower},
+		{"detectMode", fmt.Sprint(p.DetectMode)},
+		{"detectionDelay", fmt.Sprint(p.DetectionDelay)},
+		{"selEntry", fmt.Sprint(port)},
+	})
+}
+
+// --- IGMP snooping querier, per VLAN ----------------------------------------
+//
+// THE PIECE THAT MAKES SNOOPING DO ANYTHING. mcast_igsQry (above) is the
+// global querier: address, version, intervals, and an igsQryState flag. That
+// flag being 1 does NOT mean queries are being sent. The querier also has to
+// be enabled per VLAN here, and until it is the switch transmits nothing.
+//
+// Measured, not assumed: with igsQryState=1 and this list empty, a 150-second
+// tcpdump on a cluster node saw ZERO IGMP packets on VLAN 1 and VLAN 20.
+//
+// Why that matters: snooping without a querier never builds a membership
+// table, because nothing prompts hosts to report. The switch then falls back
+// to flooding, so snooping is inert rather than broken - which is exactly how
+// it looks in the metrics, and exactly why enabling snooping alone changed
+// no multicast counter on this network.
+//
+// This is the same global-versus-per-VLAN trap as snooping itself, one layer
+// down. There are three switches to line up, not one: global snooping,
+// per-VLAN snooping, and per-VLAN querier.
+
+type igmpQuerierVLANReply struct {
+	// Enabled is the list of VLANs where the querier is on. It always
+	// contains a leading 0, which is NOT a VLAN - it is the firmware's empty
+	// slot. EnabledVLANs strips it.
+	Enabled  []int `json:"igsVlans"`
+	Selected int   `json:"selVid"`
+	VLANs    []int `json:"vlans"`
+}
+
+// ListIGMPQuerierVLANs returns the VLANs the switch will send queries on, and
+// the full set of VLANs it knows about.
+func (c *Client) ListIGMPQuerierVLANs() (enabled []int, all []int, err error) {
+	var out igmpQuerierVLANReply
+	if err := c.Get("mcast_igsQryVlan", &out); err != nil {
+		return nil, nil, err
+	}
+	for _, v := range out.Enabled {
+		if v != 0 {
+			enabled = append(enabled, v)
+		}
+	}
+	return enabled, out.VLANs, nil
+}
+
+// GetIGMPQuerierVLAN reports whether the querier is enabled on one VLAN.
+func (c *Client) GetIGMPQuerierVLAN(vlanID int) (bool, error) {
+	enabled, _, err := c.ListIGMPQuerierVLANs()
+	if err != nil {
+		return false, err
+	}
+	for _, v := range enabled {
+		if v == vlanID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// SetIGMPQuerierVLAN turns the querier on or off for one VLAN.
+//
+// Takes vlanId, state AND selVid, all three. Found by trying candidate field
+// sets against the device and reading back: {selVid, igsVlans} and
+// {selVid, state} both returned save_success and changed nothing. Only the
+// full triple works - selVid names the row, vlanId is the row's own field,
+// same shape as SetIGMPSnoopingVLAN.
+//
+// Enabling this makes the switch originate IGMP general queries from the
+// address in mcast_igsQry. On a segment whose router already queries, that is
+// a second querier and IGMP will elect the lower source address; it is not
+// harmful, but it is also not needed. Check with a capture before assuming
+// the router does it - on this network it does not.
+func (c *Client) SetIGMPQuerierVLAN(vlanID int, enabled bool) error {
+	state := "0"
+	if enabled {
+		state = "1"
+	}
+	return c.Set("mcast_igsQryVlan", []Field{
+		{"vlanId", fmt.Sprint(vlanID)},
+		{"state", state},
+		{"selVid", fmt.Sprint(vlanID)},
 	})
 }

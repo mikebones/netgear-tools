@@ -127,6 +127,19 @@ type metrics struct {
 
 	igmpGlobal *prometheus.GaugeVec
 	igmpVLAN   *prometheus.GaugeVec
+
+	poePowerW     *prometheus.GaugeVec
+	poeCurrentA   *prometheus.GaugeVec
+	poeVoltageV   *prometheus.GaugeVec
+	poeLimitW     *prometheus.GaugeVec
+	poeEnabled    *prometheus.GaugeVec
+	poeDelivering *prometheus.GaugeVec
+	poeFault      *prometheus.GaugeVec
+	poeClass      *prometheus.GaugeVec
+	poePriority   *prometheus.GaugeVec
+	poeStatusInfo *prometheus.GaugeVec
+	poeTotalW     prometheus.Gauge
+	poeBudgetW    prometheus.Gauge
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -168,6 +181,39 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			"discovery that is a constant tax on every attached NIC.", "scope"),
 		igmpVLAN: f.vec("igmp_snooping_vlan_enabled", "1 if IGMP snooping is enabled on this VLAN. Enabling "+
 			"it globally does NOT enable it per VLAN, and a VLAN left off still floods.", "vlan"),
+
+		// PoE. Ports 1-4 power the four Raspberry Pi 5 cluster nodes, so this
+		// is node-availability data, not facilities trivia: a port that stops
+		// delivering is a node that hard-powers-off with no shutdown.
+		poePowerW: f.vec("poe_port_power_watts", "Power currently delivered on the port, in WATTS. The "+
+			"device reports milliwatts as a STRING; this is converted so it can be summed and alerted on "+
+			"directly. Ports 1-4 feed the Pi 5 cluster nodes.", "port"),
+		poeCurrentA: f.vec("poe_port_current_amps", "Current drawn on the port, in AMPS (device reports "+
+			"milliamps).", "port"),
+		poeVoltageV: f.vec("poe_port_voltage_volts", "Voltage supplied on the port. A sag here under load "+
+			"is the signature of a PoE budget or cable problem rather than a host fault.", "port"),
+		poeLimitW: f.vec("poe_port_power_limit_watts", "Configured per-port power ceiling (adminPower), in "+
+			"watts. A device drawing close to this is about to be cut off, which presents as an unexplained "+
+			"reboot.", "port"),
+		poeEnabled: f.vec("poe_port_enabled", "1 if PoE is administratively enabled on the port.", "port"),
+		poeDelivering: f.vec("poe_port_delivering", "1 if the port is actually delivering power right now. "+
+			"Distinct from enabled: a port can be enabled and searching, which is what an unplugged or dead "+
+			"powered device looks like.", "port"),
+		poeFault: f.vec("poe_port_fault", "1 if the port reports any fault other than None. The fault text "+
+			"itself is a label on poe_port_status_info.", "port"),
+		poeClass: f.vec("poe_port_class", "Negotiated 802.3af/at/bt class, as a number. Class 0 is "+
+			"unclassified/legacy and caps at 15.4W; classes 4 and above are at/bt.", "port"),
+		poePriority: f.vec("poe_port_priority", "Port priority for budget shedding: lower wins. When the "+
+			"budget is exceeded the switch cuts the LOWEST priority ports first, so leaving the cluster "+
+			"nodes at the same priority as everything else means the shedding order is arbitrary.", "port"),
+		poeStatusInfo: f.vec("poe_port_status_info", "Always 1. Carries the human-readable status, fault "+
+			"and class as labels, so a dashboard can show 'Searching' or a fault name without a lookup "+
+			"table in the query.", "port", "status", "fault", "class"),
+		poeTotalW: f.gauge("poe_total_power_watts", "Sum of power delivered across all PoE ports. Compare "+
+			"against poe_budget_watts for headroom."),
+		poeBudgetW: f.gauge("poe_budget_watts", "The switch's configurable per-port maximum, reported as "+
+			"the closest thing this firmware exposes to a budget figure. NOT the chassis PoE budget, which "+
+			"poe_port does not report - do not read it as headroom on its own."),
 	}
 }
 
@@ -296,6 +342,50 @@ func (p *poller) poll() {
 		for _, v := range vs {
 			p.m.igmpVLAN.WithLabelValues(strconv.Itoa(v.VLANID)).Set(b2f(v.State == 1))
 		}
+	}
+
+	if poe, err := p.c.GetPoE(); err != nil {
+		fail("GetPoE", err)
+	} else {
+		p.m.poePowerW.Reset()
+		p.m.poeCurrentA.Reset()
+		p.m.poeVoltageV.Reset()
+		p.m.poeLimitW.Reset()
+		p.m.poeEnabled.Reset()
+		p.m.poeDelivering.Reset()
+		p.m.poeFault.Reset()
+		p.m.poeClass.Reset()
+		p.m.poePriority.Reset()
+		p.m.poeStatusInfo.Reset()
+		totalMW := 0
+		for i, pp := range poe.Ports {
+			// Only the PoE-capable ports appear here, in front-panel order,
+			// so index+1 is the port number. The two 10G uplinks are absent
+			// because they deliver no power.
+			port := strconv.Itoa(i + 1)
+			mw := ms510txup.PoEMilliwatts(pp.Power)
+			totalMW += mw
+			status := ms510txup.PoELangValue(pp.Status)
+			fault := ms510txup.PoELangValue(pp.Fault)
+			class := ms510txup.PoELangValue(pp.Class)
+
+			p.m.poePowerW.WithLabelValues(port).Set(float64(mw) / 1000)
+			p.m.poeCurrentA.WithLabelValues(port).Set(float64(pp.Amphere) / 1000)
+			p.m.poeVoltageV.WithLabelValues(port).Set(float64(pp.Voltage))
+			p.m.poeLimitW.WithLabelValues(port).Set(float64(ms510txup.PoEMilliwatts(pp.AdminPower)) / 1000)
+			p.m.poeEnabled.WithLabelValues(port).Set(b2f(pp.State == 1))
+			p.m.poeDelivering.WithLabelValues(port).Set(b2f(strings.EqualFold(status, "Delivering")))
+			// "None" is the no-fault value; anything else, including a value
+			// this firmware version invents, counts as a fault.
+			p.m.poeFault.WithLabelValues(port).Set(b2f(!strings.EqualFold(fault, "None") && fault != ""))
+			if n, err := strconv.Atoi(class); err == nil {
+				p.m.poeClass.WithLabelValues(port).Set(float64(n))
+			}
+			p.m.poePriority.WithLabelValues(port).Set(float64(pp.Priority))
+			p.m.poeStatusInfo.WithLabelValues(port, status, fault, class).Set(1)
+		}
+		p.m.poeTotalW.Set(float64(totalMW) / 1000)
+		p.m.poeBudgetW.Set(float64(poe.AdminPowerMax) / 1000)
 	}
 
 	p.m.scrapeDur.Set(time.Since(start).Seconds())

@@ -30,7 +30,7 @@ jobs:
       # publishing the other, which may be the one that was actually fixed.
       fail-fast: false
       matrix:
-        exporter: [pr60x-exporter, xs508tm-exporter, ms510txup-exporter, wax630e-exporter]
+        exporter: [pr60x-exporter, xs508tm-exporter, ms510txup-exporter, wax630e-exporter, cm1000-exporter]
     steps:
       - uses: actions/checkout@v4
 
