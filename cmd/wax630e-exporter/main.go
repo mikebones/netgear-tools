@@ -96,11 +96,16 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			"string (\"50.5 GB\"), so it carries that string's precision - three significant figures, "+
 			"not a byte counter. Useful as a trend, useless as a rate()."),
 		gatewayUp: f.gauge("default_gateway_reachable", "1 if the AP reports its default gateway "+
-			"reachable. The AP shipped pointing at a factory gateway on another subnet, so this being 0 "+
-			"is the signature of addressing drift rather than a network fault."),
+			"reachable. NOTE the firmware reports this as the WORD \"Reachable\", not \"1\" - unlike "+
+			"every other status field on this device, which are \"1\"/\"0\" strings. Comparing it to "+
+			"\"1\" reports a perfectly healthy gateway as unreachable, which is exactly what this "+
+			"exporter did on its first run."),
 		cloudManaged: f.gauge("cloud_managed", "1 if the AP is NETGEAR Insight-managed rather than "+
-			"standalone. Should be 0: an Insight-managed AP takes configuration from NETGEAR's cloud, "+
-			"which would silently override everything Terraform sets here."),
+			"standalone; 0 if standalone. An Insight-managed AP takes configuration from NETGEAR's "+
+			"cloud, which would silently override everything Terraform sets here. "+
+			"Set to -1 when the firmware returns the field EMPTY, which it does for this "+
+			"query-by-example template. -1 means \"the AP did not answer\", NOT \"standalone\" - "+
+			"reporting 0 there would be inventing a reassuring answer the device never gave."),
 		dhcpClient: f.gauge("dhcp_client_enabled", "1 if the AP takes its management address by DHCP. "+
 			"Should be 0 - it was moved to a static 192.168.1.5 precisely so it could not land inside "+
 			"the router's pool again."),
@@ -168,6 +173,13 @@ func parseTraffic(s string) (float64, bool) {
 	return n, true
 }
 
+func b2f(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func oneIf(s, want string) float64 {
 	if s == want {
 		return 1
@@ -198,10 +210,18 @@ func (p *poller) poll() {
 		if secs, ok := parseUptime(mon.DeviceInfo.UpTime); ok {
 			p.m.uptimeSeconds.Set(secs)
 		}
-		// The firmware reports these as "1"/"0" strings.
-		p.m.gatewayUp.Set(oneIf(mon.DefaultGatewayStatus, "1"))
-		p.m.cloudManaged.Set(oneIf(bs.CloudStatus, "1"))
+		// THREE FIELDS, THREE DIFFERENT CONVENTIONS. dhcpClientStatus is a
+		// "1"/"0" string; defaultGatewayStatus is the WORD "Reachable"; and
+		// cloudStatus comes back EMPTY for this template. Treating them
+		// uniformly is how the first version of this exporter reported a
+		// healthy gateway as unreachable.
+		p.m.gatewayUp.Set(b2f(strings.EqualFold(strings.TrimSpace(mon.DefaultGatewayStatus), "Reachable")))
 		p.m.dhcpClient.Set(oneIf(bs.DHCPClientStatus, "1"))
+		if cs := strings.TrimSpace(bs.CloudStatus); cs == "" {
+			p.m.cloudManaged.Set(-1) // unknown - see the help text
+		} else {
+			p.m.cloudManaged.Set(oneIf(cs, "1"))
+		}
 	}
 
 	// LAN traffic. Its own call because adding these keys to the DeviceInfo
