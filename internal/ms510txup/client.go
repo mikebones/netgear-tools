@@ -1166,28 +1166,33 @@ func (c *Client) GetPoE() (PoEConfig, error) {
 	return out, err
 }
 
-// SetPoEPort changes one port's PoE settings.
+// PoE WRITES ARE NOT IMPLEMENTED, AND THE ATTEMPT IS WORTH RECORDING so the
+// next person does not spend the same afternoon on it.
 //
-// selEntry names the row, exactly as it does for the IGMP snooping VLAN
-// table - see SetIGMPSnoopingVLAN for why that is not optional and what its
-// absence looks like (save_success, and nothing changes).
+// Reading works (GetPoE). Writing does not, and the endpoint is unusually
+// unhelpful about it. Tried against poe_port on firmware 1.1.1.9, carrying
+// state/priority/adminPower/powerLimitMode/detectMode/detectionDelay:
 //
-// DISABLING A PORT CUTS ITS POWER. On ports 1-4 that means hard-powering-off
-// a cluster node, with no shutdown - treat state=0 there as equivalent to
-// pulling the plug.
-func (c *Client) SetPoEPort(port int, p PoEPort) error {
-	return c.Set("poe_port", []Field{
-		{"portId", fmt.Sprint(port)},
-		{"state", fmt.Sprint(p.State)},
-		{"priority", fmt.Sprint(p.Priority)},
-		{"powerMode", fmt.Sprint(p.PowerMode)},
-		{"powerLimitMode", fmt.Sprint(p.PowerLimitMode)},
-		{"adminPower", p.AdminPower},
-		{"detectMode", fmt.Sprint(p.DetectMode)},
-		{"detectionDelay", fmt.Sprint(p.DetectionDelay)},
-		{"selEntry", fmt.Sprint(port)},
-	})
-}
+//	port=8                  -> status ok, priority unchanged (silent discard)
+//	port=8 & selPort=8      -> status ok, priority unchanged (silent discard)
+//	port=8 & selEntry=8     -> status "error"
+//	portId=8 & selEntry=8   -> status "error"
+//	selEntry=8              -> status "error"
+//
+// So selEntry - the row selector that mcast_igsVlan and mcast_igsQryVlan both
+// require - is actively REJECTED here, and without it the write is accepted
+// and dropped. The value field names are probably wrong too; poe_port's read
+// shape is not necessarily its write shape.
+//
+// The way to settle it is the way the IGMP payload was settled: capture the
+// switch's own POST from Switching > PoE > Advanced in a browser and copy the
+// field set exactly. Guessing has now failed eight times across two endpoints
+// and is not worth a ninth.
+//
+// Deliberately NOT shipped as a Terraform resource in the meantime. A resource
+// whose apply silently does nothing is worse than no resource - and on ports
+// 1-4 a PoE write that goes wrong in the other direction hard-powers-off a
+// cluster node.
 
 // --- IGMP snooping querier, per VLAN ----------------------------------------
 //
