@@ -960,3 +960,60 @@ func (c *Client) SetIGMPSnoopingVLAN(v IGMPSnoopingVLAN, enabled bool) error {
 		{"qryIntvl", fmt.Sprint(v.QueryIntvl)},
 	})
 }
+
+// IGMPQuerier is the switch's global IGMP querier configuration
+// (get/set.cgi?cmd=mcast_igsQry).
+//
+// WHY THE QUERIER MATTERS AS MUCH AS SNOOPING. Snooping learns which ports
+// want which multicast groups by watching IGMP membership reports. Hosts send
+// those reports in RESPONSE TO QUERIES. With snooping on and nothing querying
+// the segment, the learned groups expire and are never refreshed, and the
+// switch then prunes traffic it should be forwarding - so enabling snooping
+// alone can BREAK the mDNS, SSDP and Plex discovery it was meant to stop
+// flooding. Enable both, or neither.
+//
+// Two queriers on one segment is not a problem: IGMP elects the lowest source
+// address and the loser goes quiet. So turning this on next to a router that
+// also queries is safe.
+type IGMPQuerier struct {
+	State       int    `json:"igsQryState"`
+	Address     string `json:"igsQryAddr"`
+	Version     int    `json:"igmpVer"`
+	Interval    int    `json:"igsQryIntvl"`
+	ExpInterval int    `json:"igsQryExpIntvl"`
+}
+
+// GetIGMPQuerier reads the global querier settings.
+func (c *Client) GetIGMPQuerier() (IGMPQuerier, error) {
+	var out IGMPQuerier
+	err := c.Get("mcast_igsQry", &out)
+	return out, err
+}
+
+// SetIGMPQuerier enables or disables the switch's IGMP querier.
+//
+// address is the source address the queries are sent from. It must be set to
+// something routable on the segment - the switch's own management address is
+// the obvious choice - because a querier sourcing from 0.0.0.0 is ignored by
+// some hosts, which produces exactly the half-working state this is meant to
+// avoid.
+//
+// The interval fields are sent as read rather than defaulted, for the same
+// reason as SetIGMPSnoopingVLAN: a zero here is a value to this firmware, not
+// "leave alone".
+func (c *Client) SetIGMPQuerier(q IGMPQuerier, enabled bool) error {
+	state := "0"
+	if enabled {
+		state = "1"
+	}
+	if enabled && (q.Address == "" || q.Address == "0.0.0.0") {
+		return fmt.Errorf("a querier source address is required; 0.0.0.0 is ignored by some hosts")
+	}
+	return c.Set("mcast_igsQry", []Field{
+		{"igsQryState", state},
+		{"igsQryAddr", q.Address},
+		{"igmpVer", fmt.Sprint(q.Version)},
+		{"igsQryIntvl", fmt.Sprint(q.Interval)},
+		{"igsQryExpIntvl", fmt.Sprint(q.ExpInterval)},
+	})
+}
