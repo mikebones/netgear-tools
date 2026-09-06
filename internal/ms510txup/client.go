@@ -1501,3 +1501,120 @@ func (c *Client) GetPoEBudget() (PoEBudget, bool, error) {
 	}
 	return out.Units[0], out.Uninterrupted == 1, nil
 }
+
+// --- firmware ---------------------------------------------------------------
+//
+// THE SWITCH HAS TWO IMAGE SLOTS, and that is the whole reason this is worth
+// having in code rather than clicking through the UI. An upgrade is not one
+// action, it is three:
+//
+//	1. flash the new image into a slot            (non-disruptive)
+//	2. mark that slot next-active                 (non-disruptive)
+//	3. reboot                                     (THE OUTAGE)
+//
+// Steps 1 and 2 cost nothing. Step 3 takes every device on the switch off the
+// network - which here means all five cluster nodes at once, so etcd loses
+// quorum and every Longhorn replica disconnects together.
+//
+// SEPARATING THEM IS THE POINT. Flash and stage whenever; reboot in a window
+// you chose. The UI's default hides this by pre-selecting the ACTIVE slot,
+// which overwrites the running image and leaves the much older second image as
+// the only fallback. Writing to the INACTIVE slot instead keeps the version
+// you were just running as the rollback.
+//
+// AFTER STAGING, THE SWITCH IS ARMED. nextAct points at the new image, so ANY
+// restart - including an unplanned one - boots it. Staging is not a neutral
+// state to leave things in indefinitely.
+//
+// Endpoint names come from the switch's own /js/url.js:
+//
+//	get.cgi?cmd=file_fwUpdate           slot versions + which is active/next
+//	get.cgi?cmd=file_fwUpdateCheck      as above, after asking NETGEAR
+//	set.cgi?cmd=file_fwDownload         fetch and flash
+//	get.cgi?cmd=file_fwDownloadStatus   download progress
+//	get.cgi?cmd=file_fwUpdateStatus     flash progress
+//	set.cgi?cmd=file_fwNextActive       choose the boot slot
+//	set.cgi?cmd=file_fwUploadSet        upload a local image instead
+
+// FirmwareImages is the dual-image state.
+type FirmwareImages struct {
+	Image1 string `json:"img1Ver"`
+	Image2 string `json:"img2Ver"`
+	// Active and NextActive are the strings "image1" / "image2".
+	Active      string `json:"curAct"`
+	NextActive  string `json:"nextAct"`
+	LastChecked string `json:"lastChecked"`
+}
+
+// ActiveVersion returns the version currently running.
+func (f FirmwareImages) ActiveVersion() string {
+	if f.Active == "image2" {
+		return f.Image2
+	}
+	return f.Image1
+}
+
+// NextActiveVersion returns the version that will run after the next reboot.
+// When it differs from ActiveVersion the switch is STAGED - an upgrade has
+// been flashed and is waiting for a restart.
+func (f FirmwareImages) NextActiveVersion() string {
+	if f.NextActive == "image2" {
+		return f.Image2
+	}
+	return f.Image1
+}
+
+// Staged reports whether a reboot would change the running version.
+func (f FirmwareImages) Staged() bool {
+	return f.NextActiveVersion() != f.ActiveVersion()
+}
+
+// InactiveSlot returns the slot NOT currently running - the one to flash into
+// so the running version survives as a rollback.
+func (f FirmwareImages) InactiveSlot() string {
+	if f.Active == "image2" {
+		return "image1"
+	}
+	return "image2"
+}
+
+// GetFirmware reads the two image slots without contacting NETGEAR.
+func (c *Client) GetFirmware() (FirmwareImages, error) {
+	var out FirmwareImages
+	err := c.Get("file_fwUpdate", &out)
+	return out, err
+}
+
+// CheckFirmwareUpdate asks NETGEAR whether a newer release exists. Requires
+// the switch to have working DNS and internet.
+//
+// EXPECT THIS TO FAIL INTERMITTENTLY. Observed once as "File info failure"
+// from the UI, with the identical request succeeding a minute later - the
+// download side is a plain CDN fetch and is not retried internally. Callers
+// should treat one failure as noise, not as "no update available".
+func (c *Client) CheckFirmwareUpdate() (FirmwareImages, error) {
+	var out FirmwareImages
+	err := c.Get("file_fwUpdateCheck", &out)
+	return out, err
+}
+
+// FirmwareDownloadStatus is the progress of an in-flight flash.
+type FirmwareDownloadStatus struct {
+	Status  string `json:"status"`
+	Percent int    `json:"percent"`
+	Message string `json:"msg"`
+}
+
+// GetFirmwareDownloadStatus polls the download half of an upgrade.
+func (c *Client) GetFirmwareDownloadStatus() (FirmwareDownloadStatus, error) {
+	var out FirmwareDownloadStatus
+	err := c.Get("file_fwDownloadStatus", &out)
+	return out, err
+}
+
+// GetFirmwareUpdateStatus polls the flash half of an upgrade.
+func (c *Client) GetFirmwareUpdateStatus() (FirmwareDownloadStatus, error) {
+	var out FirmwareDownloadStatus
+	err := c.Get("file_fwUpdateStatus", &out)
+	return out, err
+}

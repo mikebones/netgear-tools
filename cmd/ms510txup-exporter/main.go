@@ -151,6 +151,9 @@ type metrics struct {
 	eeeGlobal  *prometheus.GaugeVec
 	eeePort    *prometheus.GaugeVec
 	energyPort *prometheus.GaugeVec
+
+	fwInfo   *prometheus.GaugeVec
+	fwStaged prometheus.Gauge
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -255,6 +258,15 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		eeePort: f.vec("green_ethernet_eee_port_enabled", "1 if 802.3az EEE is on for this port.", "port"),
 		energyPort: f.vec("green_ethernet_auto_power_down_port_enabled", "1 if auto power down is on for "+
 			"this port - it idles a port that has no link.", "port"),
+
+		fwInfo: f.vec("firmware_info", "Always 1. Carries both image slots and which one is running vs "+
+			"which boots next. The switch keeps TWO images, so 'the firmware version' is two answers.",
+			"active", "next_active", "image1", "image2"),
+		fwStaged: f.gauge("firmware_staged", "1 when the next-active image differs from the running one - "+
+			"an upgrade has been FLASHED AND IS WAITING FOR A REBOOT. "+
+			"This is the metric worth alerting on. A staged switch is armed: any restart, including an "+
+			"unplanned one, boots the new firmware unsupervised. On this switch that reboot takes all five "+
+			"cluster nodes off the network at once, so it should happen in a window someone chose."),
 	}
 }
 
@@ -464,6 +476,14 @@ func (p *poller) poll() {
 		setW(p.m.poeThresholdW, b.ThresholdPower)
 		p.m.poeMgmtMode.Set(float64(b.PowerMgmtMode))
 		p.m.poeUninterrupt.Set(b2f(unintr))
+	}
+
+	if fw, err := p.c.GetFirmware(); err != nil {
+		fail("GetFirmware", err)
+	} else {
+		p.m.fwInfo.Reset()
+		p.m.fwInfo.WithLabelValues(fw.ActiveVersion(), fw.NextActiveVersion(), fw.Image1, fw.Image2).Set(1)
+		p.m.fwStaged.Set(b2f(fw.Staged()))
 	}
 
 	if g, err := p.c.GetGreenEthernet(); err != nil {

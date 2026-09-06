@@ -243,13 +243,15 @@ func (r *ms510IGMPSnoopingVLANResource) Schema(_ context.Context, _ resource.Sch
 					"Quieter, but it hides per-host membership from anything upstream that wants it.",
 			},
 			"querier_enabled": schema.BoolAttribute{
-				Optional: true,
 				Computed: true,
-				Default:  booldefault.StaticBool(false),
-				Description: "Per-VLAN querier. Distinct from the switch-wide querier at Switching > " +
-					"Multicast > IGMP Snooping Querier. Snooping needs SOMETHING on the segment to send " +
-					"periodic queries or memberships age out and the switch falls back to flooding; where " +
-					"the router already queries, leave this off.",
+				Description: "READ-ONLY HERE, and deliberately so. This reports the row's qryEn field, " +
+					"which is THE SAME UNDERLYING SETTING as `netgear_ms510txup_igmp_querier_vlan` - the " +
+					"switch exposes one flag through two endpoints (mcast_igsVlan's qryEn and " +
+					"mcast_igsQryVlan's VLAN list). " +
+					"Making it writable here as well produced two resources fighting over one field: every " +
+					"plan showed a diff and every apply flipped it back. Manage the querier with " +
+					"`netgear_ms510txup_igmp_querier_vlan`, which speaks the endpoint that actually works, " +
+					"and read it here.",
 			},
 			"query_interval": schema.Int64Attribute{
 				Optional:    true,
@@ -283,8 +285,11 @@ func (m *ms510IGMPSnoopingVLANModel) toWire() ms510txup.IGMPSnoopingVLAN {
 		MaxResponse:  int(m.MaxResponseTime.ValueInt64()),
 		MRouterTime:  int(m.MRouterTimeout.ValueInt64()),
 		ReportSuppEn: boolToInt(m.ReportSuppression.ValueBool()),
-		QuerierEn:    boolToInt(m.QuerierEnabled.ValueBool()),
-		QueryIntvl:   int(m.QueryInterval.ValueInt64()),
+		// QuerierEn is filled in by apply() from the LIVE row, never from the
+		// plan - see the querier_enabled schema note. Writing a planned value
+		// here would let this resource silently disable the querier that
+		// netgear_ms510txup_igmp_querier_vlan owns.
+		QueryIntvl: int(m.QueryInterval.ValueInt64()),
 	}
 }
 
@@ -309,6 +314,12 @@ func (m *ms510IGMPSnoopingVLANModel) fromWire(w ms510txup.IGMPSnoopingVLAN) {
 // successful apply.
 func (r *ms510IGMPSnoopingVLANResource) apply(plan *ms510IGMPSnoopingVLANModel, diags diagSink) {
 	want := plan.toWire()
+	// Carry the querier flag forward from the device. It is owned by
+	// netgear_ms510txup_igmp_querier_vlan; this row merely has to not clobber
+	// it, because the write sends the whole row.
+	if cur, err := r.client.GetIGMPSnoopingVLAN(want.VLANID); err == nil && cur != nil {
+		want.QuerierEn = cur.QuerierEn
+	}
 	if err := r.client.SetIGMPSnoopingVLAN(want, want.State == 1); err != nil {
 		diags.AddError("Could not set IGMP snooping for the VLAN", err.Error())
 		return
