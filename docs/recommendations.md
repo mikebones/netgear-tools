@@ -39,8 +39,14 @@ free — which is exactly where port 5 sits.
 powers off a cluster node. Mitigate by enabling globally but confirming the
 per-port action, and watch `loopCnt` before trusting it.
 
-**Recommendation:** enable on the MS510TXUP. It restores the protection that
-disabling STP removed, without giving the AP a way to crash the switch again.
+**DONE, 2026-09-07.** Global `admin=1`, `disableTimer=300`, and Keep Alive
+enabled on **port 5 only** — the AP port, the one place STP is off. Every
+other port still has STP, so it does not need this and does not get the
+false-positive risk. Rx Action stays `Disable`; the 300s timer turns a false
+positive into a five-minute blip rather than a dead port waiting for a human.
+
+Verified via the API afterwards: `admin=1 disableTimer=300 port5 state=1`,
+PoE undisturbed, 5/5 nodes Ready.
 
 ---
 
