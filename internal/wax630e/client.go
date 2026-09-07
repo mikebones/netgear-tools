@@ -615,7 +615,19 @@ func (c *Client) GetSSIDDetails() (SSIDDetails, error) {
 	}, &out); err != nil {
 		return nil, err
 	}
-	return SSIDDetails(out.System.WlanSettings.WlanSettingTable), nil
+	// UNWRAP ssidGetDetails. The reply nests the SSIDs one level deeper than
+	// the request suggests - wlanSettingTable contains a single key named
+	// after the query itself, and the SSIDs are inside that. Returning the
+	// envelope made every caller see one "SSID" called ssidGetDetails, which
+	// is how this was found: a Terraform import for SSID1 reported the only
+	// slot present as "ssidGetDetails".
+	table := out.System.WlanSettings.WlanSettingTable
+	if inner, ok := table["ssidGetDetails"].(map[string]any); ok {
+		return SSIDDetails(inner), nil
+	}
+	// Older firmware may answer without the wrapper. Returning the table as-is
+	// is the right fallback: it is what the caller wanted on those releases.
+	return SSIDDetails(table), nil
 }
 
 // --- firmware upgrade -------------------------------------------------------
