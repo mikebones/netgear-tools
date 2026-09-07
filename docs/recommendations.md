@@ -213,3 +213,32 @@ read-only in Terraform so a silent change is visible — a dual-WAN failover
 that turned itself on would send continuous probe traffic to public resolvers
 and can flap the default route, which looks like an ISP fault rather than a
 configuration one.
+
+---
+
+## 9. Do not upload certificates to these switches without console access
+
+**sw2's management interface was taken down this way on 2026-09-07.** The
+whole episode is in [xs508tm-recovery.md](xs508tm-recovery.md); the short
+version:
+
+The certificate and its private key are **separate uploads**. Uploading the
+certificate alone silently invalidates the stored pair — `certstatus` drops
+1 → 0 while the running web server carries on serving the old certificate from
+memory, so nothing looks wrong. Uploading the key afterwards to complete the
+pair killed lighttpd outright: ports 80 and 443 both stopped listening and did
+not return from an application restart or a full reboot.
+
+**The data plane was never affected.** The switch forwarded normally
+throughout — all cluster nodes Ready, all 48 Longhorn volumes healthy. Only
+the web interface was lost.
+
+**There is no CLI repair path.** No crypto/certificate/ssl commands exist,
+`copy` has no destination for the web server certificate, and `clear config`
+(full factory reset, drops the management IP) is the only reset offered.
+
+So: enable SSH **before** touching certificates, have console access ready,
+and treat a working self-signed certificate as good enough unless there is a
+real reason to change it. The gain is identity on a management interface that
+already only speaks to a handful of machines; the downside is losing that
+interface entirely.

@@ -120,59 +120,76 @@ func (c *Client) doMultipart(path string, fields map[string]string, files []Uplo
 	return nil
 }
 
-// CertFileType selects which half of the key pair an upload carries.
-//
-// UNUSED until the upload field names are known - kept because these are the
-// options the device's own File Type selector offers, and the distinction
-// they encode is the one people get wrong: a trusted ROOT is a CA the switch
-// should trust, not the switch's own identity. Uploading a Let's Encrypt
-// chain as a trusted root does not make the switch serve it.
+// CertFileType is the switch's own File Type selector, captured from the
+// upload form. THESE ARE TWO SEPARATE UPLOADS, not two halves of one request,
+// and that distinction is the whole story - see UploadCertificate.
 type CertFileType int
 
 const (
-	// CertFileServerCert is the signed server certificate (PEM).
+	// CertFileServerCert is "X.509 Public Certificate PEM".
 	CertFileServerCert CertFileType = 1
-	// CertFileServerKey is the matching private key (PEM).
+	// CertFileServerKey is "X.509 Certificate Private Key PEM".
 	CertFileServerKey CertFileType = 2
-	// CertFileTrustedRoot is a CA certificate to trust, NOT the switch's own
-	// identity - uploading a Let's Encrypt chain here does not make the switch
-	// serve it.
-	CertFileTrustedRoot CertFileType = 3
 )
 
-// UploadCertificate is NOT IMPLEMENTED, and returns an explanation instead of
-// a wrong guess.
+// UploadCertificate is DELIBERATELY NOT IMPLEMENTED. Read this before trying
+// to implement it: doing it wrong takes the switch's entire management
+// interface off the network. It did, on 2026-09-07, and only SSH got it back.
 //
-// WHAT IS ESTABLISHED. The route is POST /api/v1/https_cert_upld. It exists:
-// GET returns 404, POST is accepted. And it PARSES ITS BODY AS JSON - sending
-// multipart/form-data gets
+// # The captured request
 //
-//	400: Failed to parse json data.
+// Nothing carries the file. The JSON names a path lighttpd has ALREADY spooled
+// the upload to:
 //
-// which is the useful error. Every JSON body, by contrast, parses fine and
-// returns the content-free
+//	POST /api/v1/https_cert_upld   Content-Type: application/json
+//	{"https_cert_upld":{"file":1,"localpath":"/tmp/lighttpd/upload.tmp"}}
 //
-//	{"resp":{"respCode":-99,"status":"failure"}}
+// `file` is the CertFileType. `localpath` is lighttpd's own spool file. The
+// browser's form POST is handled by the WEB SERVER, and this JSON call is only
+// the "now import what you just spooled" half. NO SINGLE REQUEST FROM A GO
+// CLIENT CAN REPRODUCE IT - not JSON, not multipart. That is why every guessed
+// JSON body returned respCode -99, and why multipart returned
+// "400: Failed to parse json data".
 //
-// so -99 means "parsed, but the fields are wrong", not "wrong encoding".
+// # Why it is not worth finishing
 //
-// WHAT IS NOT. The field names. Ten shapes have been tried and all return
-// -99: {fileType,fileName,fileContent}, {certificate,privatekey},
-// {type,content}, {cert,key}, {data}, {content,type}, base64 variants of
-// each, both bare and wrapped in an https_cert_upld envelope.
+// Certificate and key are SEPARATE uploads (file:1 then file:2) and the switch
+// applies each immediately. Uploading the certificate alone replaces the
+// stored pair and leaves no matching key: https_cert_mgmt goes certstatus
+// 1 -> 0 while the RUNNING lighttpd carries on serving the old certificate
+// from memory. Nothing looks wrong yet.
 //
-// HOW TO FINISH IT. Capture the real request. The upload form lives in a
-// lazy-loaded chunk rather than the main bundle, so grepping does not find
-// it; open the page with an XHR recorder installed and upload any file. The
-// field names fall straight out. That is how every other write payload on
-// these devices was learned - see netgear-tools/docs/ms510txup-web-ui.md.
+// The failure lands later and hard. Uploading the key to complete the pair
+// killed lighttpd outright - HTTP and HTTPS both stopped listening, and did
+// not return from `application stop/start lighttpdMon` or a full `reload`.
+// Only port 22 survived.
 //
-// Guessing further is not worth it: this is the one call that can take a
-// switch's management interface off the network if it half-applies, and the
-// device gives no signal about which field was wrong.
+// # If the management interface is already down
+//
+// SSH is the way back in, and is worth enabling BEFORE touching certificates.
+// The CLI cannot repair this state: there is no crypto, certificate or ssl
+// command anywhere in it; `ip http` offers only accounting and authentication;
+// and `copy <url>` installs ca-root, client-ssl-cert, root-ca-certs and SSH
+// keys but has NO destination for the web server's own certificate.
+// `clear config` - a full factory reset that also drops the management IP - is
+// the only reset the CLI offers.
+//
+// # Doing it safely, if you must
+//
+// Through the web UI, in this order, with SSH already enabled:
+//
+//  1. Disable HTTPS first. The Certificate Management radios are greyed out
+//     while HTTPS is on, and an Apply with HTTPS enabled and no valid pair
+//     raises "Failed to enable HTTPS admin mode as certificate does not exist"
+//     - a modal that then silently swallows every subsequent click.
+//  2. Upload the certificate (File Type 1).
+//  3. Upload the key (File Type 2).
+//  4. Re-enable HTTPS.
+//
+// Step 3 is the one that killed it here. Have console access ready.
 func (c *Client) UploadCertificate(certPEM, keyPEM []byte) error {
-	return fmt.Errorf("https_cert_upld field names are not known yet: the route parses JSON " +
-		"(multipart returns 400 \"Failed to parse json data\") but every field shape tried " +
-		"returns respCode -99. Capture the real request from the switch's own upload form with " +
-		"an XHR recorder, then implement it here")
+	return fmt.Errorf("https_cert_upld cannot be driven from this client: lighttpd spools the file " +
+		"and the JSON call only references its temp path, so no single request reproduces it. " +
+		"Uploading certificate and key as separate steps has been observed to kill this switch's " +
+		"web server outright, recoverable only over SSH - read the doc comment first")
 }
