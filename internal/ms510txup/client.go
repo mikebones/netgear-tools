@@ -1659,3 +1659,93 @@ func (c *Client) GetSTP() (STPConfig, error) {
 	err := c.Get("stp_conf", &out)
 	return out, err
 }
+
+// STPPort is one row of the per-port spanning-tree configuration.
+type STPPort struct {
+	// Enable is per-port STP participation. Turning it OFF is the lever that
+	// makes this switch immune to a neighbour sending malformed BPDUs.
+	Enable    int `json:"enable"`
+	Fastlink  int `json:"fastlink"`
+	BpduFwd   int `json:"bpduFwd"`
+	AutoEdge  int `json:"autoedge"`
+	Cost      int `json:"cost"`
+	Priority  int `json:"pri"`
+	ExtCost   int `json:"extcost"`
+	HelloTime int `json:"helloTime"`
+	// State is an untranslated lang() key - use PoELangValue.
+	State string `json:"state"`
+	ID    string `json:"id"`
+}
+
+type stpPortReply struct {
+	Ports []STPPort `json:"ports"`
+}
+
+// ListSTPPorts reads per-port spanning-tree configuration, in front-panel
+// order.
+func (c *Client) ListSTPPorts() ([]STPPort, error) {
+	var out stpPortReply
+	if err := c.Get("stp_cstPortConf", &out); err != nil {
+		return nil, err
+	}
+	return out.Ports, nil
+}
+
+// SetSTPPortEnabled turns spanning tree on or off for one port.
+//
+// WHY YOU WOULD EVER DISABLE STP ON A PORT: to stop the switch processing
+// BPDUs from a neighbour that sends bad ones. On 2026-09-07 a WAX630E running
+// firmware 10.8.13.2 - which predates the fix in AP firmware 11.8.0.9,
+// "STP was enabled on the AP with incorrect Forward Delay causing intermediate
+// switch to malfunction or crash" - took THIS switch down twice within minutes
+// of booting, each time requiring a physical power cycle. Because the switch
+// also supplies PoE to the four cluster nodes, that is a hard power cut of the
+// whole cluster, not merely a network outage.
+//
+// Disabling STP on the AP's port makes the switch immune regardless of what
+// firmware the AP runs, which is a far better position than racing to upgrade
+// the AP before it crashes its own uplink.
+//
+// SAFE ONLY ON A GENUINE EDGE PORT - one host, no redundant path. It is what
+// portfast/edge configuration amounts to anyway. Do NOT disable it on a port
+// that reaches another switch: STP is the only thing standing between this
+// network and a broadcast storm.
+//
+// Ports are 1-based as printed on the chassis; selEntry is zero-based, and the
+// whole row must be sent - see SetIGMPSnoopingVLAN for how that was learned.
+func (c *Client) SetSTPPortEnabled(port int, enabled bool) error {
+	ports, err := c.ListSTPPorts()
+	if err != nil {
+		return err
+	}
+	if port < 1 || port > len(ports) {
+		return fmt.Errorf("port %d out of range 1-%d", port, len(ports))
+	}
+	p := ports[port-1]
+	v := "0"
+	if enabled {
+		v = "1"
+	}
+	if err := c.Set("stp_cstPortConf", []Field{
+		{"selEntry", fmt.Sprint(port - 1)},
+		{"enable", v},
+		{"fastlink", fmt.Sprint(p.Fastlink)},
+		{"bpduFwd", fmt.Sprint(p.BpduFwd)},
+		{"autoedge", fmt.Sprint(p.AutoEdge)},
+		{"cost", fmt.Sprint(p.Cost)},
+		{"pri", fmt.Sprint(p.Priority)},
+		{"extcost", fmt.Sprint(p.ExtCost)},
+		{"helloTime", fmt.Sprint(p.HelloTime)},
+	}); err != nil {
+		return err
+	}
+	got, err := c.ListSTPPorts()
+	if err != nil {
+		return err
+	}
+	if (got[port-1].Enable == 1) != enabled {
+		return fmt.Errorf("port %d still reports STP enable=%d after being set to %v",
+			port, got[port-1].Enable, enabled)
+	}
+	return nil
+}
