@@ -140,14 +140,46 @@ memory` after CLI changes, or they revert on reboot.
   operational-log and startup-config all arrive 0 bytes. Capture the running
   config off the terminal (`show running-config`) instead.
 
-## Do NOT re-break it
+## Installing a trusted certificate (the safe way)
 
-The certificate upload that started all this - `https_cert_upld` - cannot be
-driven safely from the client. Uploading the certificate and key as the two
-separate steps the firmware requires kills lighttpd outright. See the doc
-comment on `UploadCertificate`. Leave HTTPS on the self-signed default, or drive
-the whole cert install through the UI with SSH already enabled and console
-access ready.
+The install that started all this can be done safely - the killer was doing it
+with HTTPS enabled. On 2026-09-07 a Let's Encrypt cert was installed on sw2 and
+validates cleanly (issuer Let's Encrypt, no browser warning). The one rule that
+makes it safe: **disable HTTPS first**, so the transient cert/key mismatch
+mid-install cannot trigger the lighttpd reload that kills it.
+
+Through the UI (System > Protocols > HTTP), in order:
+
+1. Toggle **Allow HTTPS off**, Apply. lighttpd now serves HTTP only.
+2. Certificate Upload, File Type **X.509 Public Certificate PEM**, upload the
+   leaf+chain PEM, Apply. Certificate Present flips to No (expected: cert
+   replaced, key not yet matching).
+3. File Type **X.509 Certificate Private Key PEM**, upload the key, Apply.
+   Certificate Present returns to Yes.
+4. Toggle **Allow HTTPS on**, Apply. It now serves the trusted cert.
+
+The cert must match the name the browser uses (CN/SAN sw2.<domain>, which must
+resolve to the switch), and the PEM should carry the intermediate chain so a
+browser can build the path.
+
+### The request recipe (for automating renewal)
+
+Captured from the UI. Each file is two requests; four in all:
+
+	POST /cgi/v1/file_upload      multipart, field "file"   -> spools to /tmp/lighttpd/upload.tmp
+	POST /api/v1/https_cert_upld  {"https_cert_upld":{"file":1,"localpath":"/tmp/lighttpd/upload.tmp"}}
+	POST /cgi/v1/file_upload      (the key)
+	POST /api/v1/https_cert_upld  {"https_cert_upld":{"file":2,"localpath":"/tmp/lighttpd/upload.tmp"}}
+
+`file` is 1 for the certificate, 2 for the key. **Headless reproduction is not
+solved yet:** `/cgi/v1/file_upload` returns HTTP 200 with body respCode 403 to
+every non-browser client tried (cookie, cookie+Bearer, token as query param,
+with Referer/Origin), so the file never spools and the import then returns
+respCode -1. The browser sends some additional session/CSRF binding not yet
+captured at the byte level. `Client.UploadCertificate` implements the recipe and
+the disable-HTTPS-first safety, ready for when that gate is understood; until
+then, install through the UI. LE renews ~every 90 days, so this is a periodic
+manual step.
 
 ## Getting credentials into a recovery pod safely
 
