@@ -1749,3 +1749,26 @@ func (c *Client) SetSTPPortEnabled(port int, enabled bool) error {
 	}
 	return nil
 }
+
+// GetPage fetches a raw web-UI page or asset through the authenticated
+// session, for discovery rather than for normal operation.
+//
+// IT EXISTS BECAUSE THE CGI FIELD NAMES ARE NOT GUESSABLE. A write to this
+// switch is accepted and silently discarded when a field name is wrong or a
+// required field is missing - the reply still says save_success - so the only
+// reliable way to learn a payload is to read the form the web UI submits. The
+// pages 404 without a session, which is why this goes through the client
+// rather than a plain curl.
+//
+// path is relative to the device root, e.g. "switch_loop_protection.html" or
+// "js/url.js". Nothing here should be needed at runtime; if a caller finds
+// itself parsing HTML to configure the switch, the missing piece belongs in a
+// typed method instead.
+func (c *Client) GetPage(path string) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.ensure(); err != nil {
+		return nil, err
+	}
+	return c.do(strings.TrimPrefix(path, "/"), "", false)
+}
