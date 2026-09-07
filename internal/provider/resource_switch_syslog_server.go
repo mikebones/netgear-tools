@@ -157,9 +157,13 @@ func (r *switchSyslogServerResource) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	// The POST body is an ARRAY. A bare object is rejected with errCode 175,
-	// which is also what a duplicate host returns - so check first and give a
-	// useful message rather than surfacing an opaque code.
+	// The POST body is the ENVELOPED list object, {"server_log_cfg":[...]}, the
+	// same shape a GET returns - matching xs508tm's other setters. A bare array
+	// is rejected with errCode 175 ("Log configuration failed"), verified on
+	// firmware 7.8.11.21 during the 2026-09-07 factory-reset recovery, when the
+	// old bare-array form silently failed on read-back. errCode 175 is also what
+	// a duplicate host returns, so check first and give a useful message rather
+	// than surfacing an opaque code.
 	if existing, err := r.find(plan.Host.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Could not list syslog servers", err.Error())
 		return
@@ -171,7 +175,7 @@ func (r *switchSyslogServerResource) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	if err := r.client.Post("server_log_cfg", []syslogEntry{plan.toEntry()}, nil); err != nil {
+	if err := r.client.Post("server_log_cfg", syslogList{Servers: []syslogEntry{plan.toEntry()}}, nil); err != nil {
 		resp.Diagnostics.AddError("Could not add syslog server", err.Error())
 		return
 	}
@@ -216,7 +220,7 @@ func (r *switchSyslogServerResource) Update(ctx context.Context, req resource.Up
 		resp.Diagnostics.AddError("Could not remove the old syslog entry before rewriting it", err.Error())
 		return
 	}
-	if err := r.client.Post("server_log_cfg", []syslogEntry{plan.toEntry()}, nil); err != nil {
+	if err := r.client.Post("server_log_cfg", syslogList{Servers: []syslogEntry{plan.toEntry()}}, nil); err != nil {
 		resp.Diagnostics.AddError("Could not update syslog server", err.Error())
 		return
 	}

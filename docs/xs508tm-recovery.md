@@ -1,12 +1,14 @@
 # XS508TM: recovering when the web interface is gone
 
-Written after taking sw2's management interface down with a certificate
-upload on 2026-09-07. Everything here was learned during that recovery.
+Written after taking a switch's management interface down with a certificate
+upload on 2026-09-07, and recovering it fully the same day. Everything here was
+learned in that incident. The headline correction to the first draft: **this is
+recoverable, and cleanly.** A broken web certificate is not a dead switch.
 
-## First: check what actually broke
+## First: a dead web UI is not an outage
 
-A dead web UI on this switch is almost always **lighttpd**, not the switch.
-The two are worth separating before doing anything drastic:
+The web UI on this switch is **lighttpd**, a userspace app. It is not the
+switch. Separate them before doing anything drastic:
 
 ```
 ping <switch>                 # data plane and management IP
@@ -14,92 +16,142 @@ nmap -Pn -p 1-1024 <switch>   # what is still listening
 kubectl get nodes             # is anything downstream actually affected
 ```
 
-In the 2026-09-07 incident the switch kept forwarding perfectly throughout —
-all cluster nodes Ready, all 48 Longhorn volumes healthy, uninterrupted. Only
-ports 80 and 443 were gone. **A dead web UI is not an outage**, and treating
-it like one leads to reboots that risk far more than they fix.
+In the incident the switch forwarded perfectly throughout - all cluster nodes
+Ready, all Longhorn volumes healthy - across every reboot and the factory
+reset. Only ports 80/443 were ever gone. Treat a dead web UI as a service
+problem, not a network emergency.
 
-## SSH is the way back in — enable it in advance
+## What actually breaks it
 
-Port 22 was the only thing still listening, and the admin password works over
-it. That single fact is the difference between a config change and a site
-visit.
-
-**Enable SSH before you touch certificates**, not after. Once lighttpd is
-down there is no API to enable it with.
+lighttpd refuses to start if HTTPS is enabled and its certificate file is
+missing:
 
 ```
-ssh admin@<switch>
-(XS508TM)>enable
-(XS508TM)#
+RestAgent: Failed to start lighttpd ... libcrypto.so.3: no version information
+(fdevent.c) fdevent_load_file() /mnt/fastpath/lighttpd/ssl/https_cert.cer: No such file or directory
 ```
 
-## What the CLI can and cannot do
+Once it dies it takes BOTH listeners with it - HTTP and HTTPS - because it
+aborts before binding either. `application stop/start lighttpdMon` and a full
+`reload` do not help: the certificate lives on flash, survives a reboot, and
+RestAgent does not regenerate it on boot.
 
-Useful:
+### The CLI cannot repair the certificate, and that is fine
 
-| Command | Does |
-| --- | --- |
-| `show application` | lists the OpEN apps, including `lighttpdMon` and `RestAgent` |
-| `application stop/start <name>` | restarts an app without rebooting |
-| `show sysinfo` | uptime — the only reliable way to confirm a reboot happened |
-| `dir` | lists flash: images, `certs/`, `lighttpd/`, crash logs |
-| `copy <src> <url>` | exports logs/config over tftp/ftp/scp/sftp/http |
-| `copy <url> <dest>` | installs code, config, CA roots, client certs, SSH keys |
-| `reload` | reboot |
-| `terminal length 0` | disable the pager — do this first or `?` output truncates |
+There is no `crypto`/`certificate`/`ssl` command in any CLI mode; `ip http`
+offers only accounting and authentication; and `copy <url>` installs ca-root,
+client-ssl-cert, root-ca-certs and SSH keys but has **no destination for the
+web server's own certificate**. `nvram:script` only replays CLI commands, which
+have no file-write verb. So you cannot put the missing file back from the CLI.
 
-**What it cannot do, which is the important half:**
+You do not need to. **A factory reset fixes it** - see below.
 
-* No `crypto`, `certificate` or `ssl` commands exist anywhere, in any mode.
-* `ip http` offers only `accounting` and `authentication`.
-* `copy <url> ?` has destinations for `ca-root`, `client-ssl-cert`,
-  `root-ca-certs`, `sshkey-*`, configs and images — **but nothing for the web
-  server's own certificate**.
-* `dir` takes no argument, so flash subdirectories cannot be listed.
-* `debug` exposes protocol trace flags only. There is no shell.
+## The fix: factory reset restores a working state
 
-So a broken web certificate **cannot be repaired from the CLI**. That is the
-finding that matters.
+The broken state is `httpsEnable=1` with the certificate file gone. The
+**factory-default** state is `httpsEnable=0` (plain HTTP, which is also what the
+exporter uses) with a self-signed certificate present. So restoring factory
+defaults returns lighttpd to a state it can actually start in:
 
-## Things that did not work
-
-Recorded so nobody spends the time again:
-
-* `application stop lighttpdMon` then `start` — reports "Application started",
-  ports stay closed. lighttpd dies again immediately on the bad certificate.
-* `reload` — confirmed by uptime that it rebooted; ports still closed. The
-  certificate lives on flash, not in the config, so it survives.
-* Exporting `nvram:crash-log`, `nvram:errorlog`, `nvram:operational-log` over
-  TFTP — the transfer starts and creates the file, but all arrive **0 bytes**
-  after a reboot.
-
-### The reload prompts need pacing
-
-`reload` asks two questions that read a **single character with no newline**.
-Piping `printf 'enable\nreload\nn\ny\n'` desynchronises and the `y` lands as a
-command instead of an answer. Pace it:
-
-```sh
-( echo enable; sleep 2; echo reload; sleep 3; printf 'n'; sleep 3; printf 'y'; sleep 8 ) \
-  | sshpass -e ssh -tt admin@<switch>
+```
+enable
+clear config          # answer y - this reboots the switch
 ```
 
-`n` declines "save unsaved changes", `y` confirms the reset.
+`clear config` is all-or-nothing and **drops the management IP and the admin
+password**. That is the whole cost, and the rest of this playbook is paying it
+back. Have a plan for the IP (below) before you run it.
 
-## Last resort
+## Post-reset recovery, in order
 
-`clear config` — a full factory reset. It is the only reset the CLI offers,
-it is all-or-nothing, and **it drops the management IP**, so the switch comes
-back on a default address. Have console access before running it.
+### 1. Find the switch
 
-For this network most of the switch's configuration is in Terraform
-(`netgear_xs508tm_*`), so rebuilding is realistic — but the IP has to be
-recovered first.
+Factory default is **DHCP client**. The switch reboots and takes a lease from
+whatever serves DHCP. Find it by its burned-in MAC in the router's lease table
+(`getDhcpLeases`). The web UI is back on **HTTP :80** at that address the moment
+lighttpd starts.
+
+### 2. Log in and change the password
+
+Factory login is `admin` / `password`, and the API login reply carries
+`def_password:1`. The switch forces a change on first use. Change it back to the
+managed value so existing tooling keeps working - over SSH once it is enabled
+(step 3), or through the UI. The def-password change replies "Log in again
+using the new password" rather than "Password Changed"; that is success, not
+failure.
+
+### 3. Enable SSH
+
+Factory default is SSH **off**. Turn it on early - it is the second way in when
+the web plane is wedged. `ssh_global_cfg` `admin=1` over the API (verified: port
+22 begins listening), or `ip ssh server enable` from the CLI.
+
+### 4. Restore the static IP - and the trap that lives here
+
+If the address should be static, this is the step that will strand you if you
+are not careful:
+
+```
+network protocol none        # "will reset ip configuration" - answer y
+network parms <ip> <mask> <gw>
+```
+
+**`network protocol none` resets the IPv4 config immediately** and drops the
+switch onto its default static address (192.168.0.239), on a different subnet.
+Your SSH session dies at the `y`, before `network parms` is sent, and now the
+switch is unreachable over IPv4 from your LAN.
+
+**The way back in is IPv6 link-local.** The switch's `fe80::` address is derived
+from its MAC and is completely independent of the IPv4 configuration, so it
+survives the reset. From a host on the same L2 segment:
+
+```
+# derive/observe the address (show network prints it as "IPv6 Prefix is fe80::...")
+# find which local interface reaches it:
+ping fe80::<switch-eui64>%<zoneN>       # try each interface's zone id
+ssh admin@[fe80::<switch-eui64>%<zoneN>]
+network parms <ip> <mask> <gw>          # session SURVIVES - link-local is unaffected
+write memory
+```
+
+Setting the IPv4 address over link-local does not drop the link-local session,
+so you can set the final static IP and confirm it in one connection. This is the
+single most useful fact in this document.
+
+### 5. Reapply the rest of the configuration
+
+A factory reset wipes everything. Reapply the Terraform-managed subset
+(`terraform apply` - igmp snooping, syslog, port MTU, web access), then restore
+anything not yet in Terraform from the captured baseline (on this network:
+`ip routing`, `ip helper enable`, `ip helper-address <relay> dhcp`). `write
+memory` after CLI changes, or they revert on reboot.
+
+## Gotchas worth knowing
+
+* **Syslog writes need the envelope.** `server_log_cfg` accepts the enveloped
+  object `{"server_log_cfg":[...]}` and rejects a bare array with errCode 175
+  ("Log configuration failed"). Same shape a GET returns. (Fixed in the
+  provider's syslog resource.)
+* **HTTP session slots are scarce.** maxSes is 4 and the softTimeout is 15
+  minutes. A tool that logs in without logging out burns a slot for the full
+  timeout; a handful of those and login returns errCode 481 ("Maximum allowed
+  sessions reached"). SSH is a separate path and is unaffected - lean on it.
+* **TFTP export is broken on this firmware.** Exports of crash-log, errorlog,
+  operational-log and startup-config all arrive 0 bytes. Capture the running
+  config off the terminal (`show running-config`) instead.
+
+## Do NOT re-break it
+
+The certificate upload that started all this - `https_cert_upld` - cannot be
+driven safely from the client. Uploading the certificate and key as the two
+separate steps the firmware requires kills lighttpd outright. See the doc
+comment on `UploadCertificate`. Leave HTTPS on the self-signed default, or drive
+the whole cert install through the UI with SSH already enabled and console
+access ready.
 
 ## Getting credentials into a recovery pod safely
 
-`sshpass -e` reads the password from `$SSHPASS`, so it never appears in a
+`sshpass -e` reads the password from `$SSHPASS`, so it never appears on a
 command line or in container logs:
 
 ```yaml
