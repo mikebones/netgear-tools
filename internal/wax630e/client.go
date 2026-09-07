@@ -33,8 +33,10 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
@@ -878,4 +880,133 @@ func (c *Client) UpgradeFromSFTP(server, username, password, remoteFile string) 
 		return fmt.Errorf("the access point rejected the SFTP upgrade (status %d)", out.Status)
 	}
 	return nil
+}
+
+// --- session probe ----------------------------------------------------------
+
+// SessionValid reports whether this client's session is still live on the AP,
+// without disturbing it.
+//
+// POST /sessionCheck  {"sessionCheck":""}
+//
+// THIS EXISTS TO BREAK A WEDGE, not for curiosity. The AP invalidates every
+// session across a reboot, and a client holding a dead token gets HTML error
+// pages back instead of JSON - which surfaces as
+//
+//	decode reply: invalid character '<' looking for beginning of value
+//
+// on EVERY call, forever, because nothing in the normal path ever decides to
+// log in again. A long-lived poller that upgraded or rebooted the AP therefore
+// stops reporting until someone restarts it. Probing here and re-logging in on
+// a false is the fix.
+//
+// Note the AP also answers HTTPS for roughly 30 seconds after a reboot before
+// its API is ready, serving that same HTML. So a false here can mean "still
+// booting" as well as "session gone"; both want the same response, which is to
+// log in again rather than give up.
+func (c *Client) SessionValid() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.token == "" {
+		return false
+	}
+	_, raw, err := c.post(map[string]any{"sessionCheck": ""},
+		map[string]string{"__path": "/sessionCheck", "security": c.token})
+	if err != nil {
+		return false
+	}
+	var out struct {
+		Status json.Number `json:"status"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		// An HTML body is exactly the wedge this call exists to detect.
+		return false
+	}
+	return out.Status.String() == "0"
+}
+
+// Reauthenticate drops any existing session and establishes a new one.
+//
+// Pair it with SessionValid in a poller's error path. Logout is best-effort:
+// if the session is already gone the AP will reject the logout too, and that
+// must not stop the login that follows.
+func (c *Client) Reauthenticate() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.token != "" {
+		_ = c.logoutLocked()
+	}
+	c.token = ""
+	return c.login()
+}
+
+// --- configuration backup ---------------------------------------------------
+
+// backupPath is where the AP parks the generated archive. The name is a
+// leftover from the WAC510 and is the same on the WAX630E.
+const backupPath = "/wac510-backup"
+
+// Backup downloads the AP's own encrypted configuration archive and returns it
+// with the filename the device suggests.
+//
+// THIS IS THE ONLY COMPLETE CAPTURE OF THE CONFIG. Everything else in this
+// client models the fields somebody thought to model; this is whatever the
+// firmware itself considers state, including the settings no Terraform
+// resource here covers. If the AP is ever factory-reset - and its own upgrade
+// flow offers to do exactly that - this file is the difference between
+// restoring and rebuilding from memory.
+//
+// Two steps, which is why it is not a plain GET:
+//
+//	POST /LogFile  {"method":3,"password":"..."}  ->  {"status":0}   generate
+//	GET  /wac510-backup                                              collect
+//
+// The password encrypts the archive and is REQUIRED on restore. An archive
+// whose password is lost is scrap, so store them together.
+//
+// The returned bytes are secrets - the archive contains every passphrase on
+// the AP. Vault, not a git repo.
+func (c *Client) Backup(password string) (filename string, data []byte, err error) {
+	if password == "" {
+		return "", nil, errors.New("a backup password is required: the AP encrypts the archive with it, " +
+			"and an archive with no password cannot be restored")
+	}
+	var gen struct {
+		Status json.Number `json:"status"`
+	}
+	if err := c.fwPost(map[string]any{"method": 3, "password": password}, &gen); err != nil {
+		return "", nil, fmt.Errorf("ask the AP to generate a backup: %w", err)
+	}
+	if gen.Status.String() != "0" {
+		return "", nil, fmt.Errorf("the AP refused to generate a backup (status %s)", gen.Status)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	req, err := http.NewRequest(http.MethodGet, c.endpoint+backupPath, nil)
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("security", c.token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", nil, fmt.Errorf("collect the backup: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", nil, fmt.Errorf("collect the backup: HTTP %d", resp.StatusCode)
+	}
+	// The UI takes the filename from Content-Disposition rather than inventing
+	// one, because the AP stamps the model and version into it.
+	filename = "wax630e-backup.tar"
+	if _, params, e := mime.ParseMediaType(resp.Header.Get("Content-Disposition")); e == nil {
+		if n := params["filename"]; n != "" {
+			filename = n
+		}
+	}
+	return filename, data, nil
 }

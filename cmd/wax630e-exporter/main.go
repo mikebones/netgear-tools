@@ -64,6 +64,7 @@ func (f factory) vec(n, h string, labels ...string) *prometheus.GaugeVec {
 type metrics struct {
 	up         prometheus.Gauge
 	scrapeErrs prometheus.Counter
+	reauths    prometheus.Counter
 	scrapeDur  prometheus.Gauge
 	lastScrape prometheus.Gauge
 
@@ -84,6 +85,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		up: f.gauge("up", "1 if the last poll of the AP succeeded. An exporter that cannot log in looks "+
 			"exactly like a quiet network otherwise, which is how a rotated password goes unnoticed."),
 		scrapeErrs: f.counter("scrape_errors_total", "Polls that failed."),
+		reauths: f.counter("session_reauth_total", "Times the AP's session was found dead and "+
+			"re-established. Expect one per AP reboot. A rising count with no reboots means "+
+			"sessions are being timed out or evicted - the AP caps concurrent logins, so "+
+			"something else is logging in and pushing this one out."),
 		scrapeDur:  f.gauge("scrape_duration_seconds", "Duration of the last poll."),
 		lastScrape: f.gauge("last_scrape_timestamp_seconds", "Unix time of the last successful poll."),
 
@@ -193,11 +198,48 @@ type poller struct {
 	mu sync.Mutex
 }
 
+// ensureSession re-establishes the session when the AP has dropped it.
+//
+// THIS IS WHAT STOPS THE EXPORTER WEDGING ACROSS AN AP REBOOT. The AP
+// invalidates every session when it restarts, and a client still holding the
+// old token gets HTML error pages instead of JSON from then on - so every
+// metric here fails with
+//
+//	decode reply: invalid character '<' looking for beginning of value
+//
+// forever, because nothing in the normal read path ever decides to log in
+// again. That happened for real: the AP was upgraded and rebooted, and this
+// exporter reported nothing until it was manually restarted - losing exactly
+// the window somebody would want the data for.
+//
+// The probe is cheap (one POST /sessionCheck) and only reconnects when the
+// answer is no, so the steady-state cost is one extra request per poll. It
+// also covers the ~30 seconds after a reboot in which the AP answers HTTPS
+// but its API is not up yet: that reads as an invalid session, the login
+// fails, and the next poll simply tries again.
+func (p *poller) ensureSession() {
+	if p.c.SessionValid() {
+		return
+	}
+	if err := p.c.Reauthenticate(); err != nil {
+		// Not fatal and not counted as its own failure: the reads below will
+		// fail on their own and mark the scrape down. Logged because "session
+		// gone AND could not get a new one" is a different situation from a
+		// single read failing, and the distinction matters at 3am.
+		log.Printf("poll: session lost and could not re-establish it: %v", err)
+		return
+	}
+	log.Printf("poll: session was gone (AP reboot or timeout); logged in again")
+	p.m.reauths.Inc()
+}
+
 func (p *poller) poll() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	start := time.Now()
 	var failed bool
+
+	p.ensureSession()
 
 	if di, err := p.c.GetDeviceInfo(); err != nil {
 		log.Printf("poll: GetDeviceInfo: %v", err)

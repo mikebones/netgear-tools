@@ -95,7 +95,7 @@ func (p *NetgearProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 		Attributes: map[string]schema.Attribute{
 			"pr60x":     deviceAttrs("the PR60X router", "https://192.168.1.1", "PR60X"),
 			"xs508tm":   deviceAttrs("an XS-series smart switch", "http://192.168.1.3", "XS508TM"),
-			"wax630e":   deviceAttrs("a WAX6-series access point", "https://192.168.1.136", "WAX630E"),
+			"wax630e":   deviceAttrs("a WAX6-series access point", "https://192.168.1.5", "WAX630E"),
 			"ms510txup": deviceAttrs("an MS510TXUP smart switch", "http://192.168.1.2", "MS510TXUP"),
 		},
 	}
@@ -232,6 +232,9 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewMS510IGMPQuerierVLANResource,
 		NewMS510PoEPortResource,
 		NewMS510STPPortResource,
+		NewWAX630ERadioResource,
+		NewWAX630ESNMPResource,
+		NewWAX630ESSIDResource,
 	}
 }
 
