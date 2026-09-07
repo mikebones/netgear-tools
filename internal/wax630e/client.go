@@ -954,8 +954,15 @@ func (c *Client) Reauthenticate() error {
 
 // --- configuration backup ---------------------------------------------------
 
-// backupPath is where the AP parks the generated archive. The name is a
-// leftover from the WAC510 and is the same on the WAX630E.
+// backupPath is where the AP parks the generated archive.
+//
+// The WAC510 name is not a leftover that happens to work - lighttpd routes
+// this with a REGEX:
+//
+//	$HTTP["url"] =~ "/wa(....)-backup" { alias.url += ( "" => cgi-bin + "/wac5xx-backup" ) }
+//
+// so any four characters match and every spelling reaches one handler. The
+// UI's own JavaScript builds "/wac510-backup", which is why that is used here.
 const backupPath = "/wac510-backup"
 
 // Backup downloads the AP's own encrypted configuration archive and returns it
