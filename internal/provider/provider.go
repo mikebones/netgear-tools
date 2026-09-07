@@ -238,6 +238,7 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewWAX630EManagementResource,
 		NewWAX630ETimeResource,
 		NewPR60XManagementResource,
+		NewPR60XTimeResource,
 	}
 }
 

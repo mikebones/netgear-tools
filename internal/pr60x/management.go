@@ -184,3 +184,66 @@ func (c *Client) SetMDNSSettings(m MDNSSettings) error {
 	var out json.RawMessage
 	return c.CallResult("setMdnsSettings", m, &out)
 }
+
+// TimeSettings is the router's timezone. NTP servers are separate - see
+// NTPSettings - which is why a "what time is it" question needs both.
+type TimeSettings struct {
+	// TimeZoneCode is an opaque index into the router's own table, not an
+	// offset and not an IANA name. It cannot be derived; read it off the
+	// device. Note this is a DIFFERENT numbering from the WAX630E's timeZone,
+	// so the two devices in the same room carry different numbers for the same
+	// wall clock.
+	TimeZoneCode   int `json:"timeZoneCode"`
+	DaylightSaving int `json:"daylightSaving"`
+}
+
+// GetTimeSettings returns the router's timezone configuration.
+func (c *Client) GetTimeSettings() (TimeSettings, error) {
+	var out TimeSettings
+	err := c.CallResult("getTimeSettings", map[string]any{}, &out)
+	return out, err
+}
+
+// SetTimeSettings writes it.
+func (c *Client) SetTimeSettings(t TimeSettings) error {
+	var out json.RawMessage
+	return c.CallResult("setTimeSettings", t, &out)
+}
+
+// LagSettings is link aggregation.
+//
+// Disabled here with no member ports, which is correct: every device on this
+// network has a single uplink, and a LAG needs two physical links to the same
+// partner. Declared so that "off" is a decision rather than an assumption.
+type LagSettings struct {
+	Enabled int             `json:"enabled"`
+	Lags    json.RawMessage `json:"lags,omitempty"`
+}
+
+// GetLagSettings returns the LAG configuration.
+func (c *Client) GetLagSettings() (LagSettings, error) {
+	var out LagSettings
+	err := c.CallResult("getLagSettings", map[string]any{}, &out)
+	return out, err
+}
+
+// DualWANProfiles is the second-WAN failover configuration.
+//
+// Disabled, and correctly so: there is one WAN, a CM1000 cable modem. Worth
+// reading rather than assuming, because the failure it guards against - a
+// silently enabled failover tracking 8.8.8.8 - would send probe traffic out
+// continuously and can flap the default route.
+type DualWANProfiles struct {
+	Enabled          int    `json:"enabled"`
+	Mode             string `json:"mode"`
+	PrimaryInterface string `json:"primaryInterface"`
+	FailureDetection string `json:"faliureDetectionMethod"` // sic - the router's own spelling
+	TrackIPType      string `json:"trackIpType"`
+}
+
+// GetDualWANProfiles returns the dual-WAN configuration.
+func (c *Client) GetDualWANProfiles() (DualWANProfiles, error) {
+	var out DualWANProfiles
+	err := c.CallResult("getDualWanProfiles", map[string]any{}, &out)
+	return out, err
+}
