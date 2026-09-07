@@ -49,6 +49,11 @@ it is not in `home.html`, `url.js`, `url_mockup.js`, `rollover.js`,
 `ng_style.js`, `masnory.js` or `autocomplete.js`. Until that is found, the
 UI's search box remains the way to resolve a feature to its page.
 
+**And the menu path is not guessable either.** HTTPS lives under
+**System > Protocols**, not under Security - a `sec_*` / `security_*` sweep of
+166 candidate filenames found nothing but the page already known. Search for
+the feature; do not reason about where it "should" be.
+
 ## The pages are not where the legacy JS suggests
 
 `js/xui_enhancements.js` references `DhcpQueueMapping.html` and
