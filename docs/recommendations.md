@@ -100,6 +100,13 @@ session.
 
 The admin password crosses the LAN in clear on every login.
 
+**Status:** not done. `access_httpsCert` reports `{admin:0, present:0,
+status:0}` - no certificate exists - and `set access_httpsCert admin=1` is
+accepted and silently discarded, the usual sign that the form supplies fields
+this does not. Certificate generation needs subject details (common name,
+organisation, validity) that only the web UI form carries, and that page's
+name is still unknown. See ms510txup-web-ui.md.
+
 **Recommendation:** generate a self-signed certificate (`access_httpsCert`)
 and enable HTTPS. Then decide whether to disable HTTP — note the exporter's
 endpoint has to change in the same commit, and a self-signed cert means the

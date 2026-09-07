@@ -21,6 +21,34 @@ page or JS file through the authenticated session. Without the signature
 everything returns **404**, which reads as "no such page" and is why a long
 list of plausible page names all appeared not to exist.
 
+## Pages live under `html/`, in snake_case
+
+Content pages are at **`html/<name>.html`**, not at the document root. The
+give-away is a commented-out line in `js/sample_home.js`:
+
+```js
+//$("#main").load("../html/sys_mgmt_info.html");
+```
+
+Confirmed working through `Client.GetPage`:
+
+| Path | What |
+| --- | --- |
+| `html/sys_mgmt_info.html` | a real settings page, 35 KB |
+| `html/site_index.html` | the "Index" shell from the sidebar |
+| `login.html`, `home.html` | at the root, not under `html/` |
+
+**The names are their own vocabulary.** They are not the `cmd=` names:
+`html/loop_protect.html`, `html/storm_cfg.html` and `html/access_https.html`
+all 404 even though those commands exist. Nor are they the `url_get_*` /
+`url_set_*` variable names from `js/url.js`.
+
+The menu that maps a feature to its page is built from `topPaneData.navData`,
+referenced by `js/sample_home1.js` but defined in a file I have not located -
+it is not in `home.html`, `url.js`, `url_mockup.js`, `rollover.js`,
+`ng_style.js`, `masnory.js` or `autocomplete.js`. Until that is found, the
+UI's search box remains the way to resolve a feature to its page.
+
 ## The pages are not where the legacy JS suggests
 
 `js/xui_enhancements.js` references `DhcpQueueMapping.html` and
