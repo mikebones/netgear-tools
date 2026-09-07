@@ -325,6 +325,21 @@ func (c *Client) ensure() error {
 // Callers hold c.mu.
 func (c *Client) dropSession() {
 	c.tabid, c.pub, c.xsrf = "", nil, ""
+
+	// AND THROW AWAY THE COOKIE. Forgetting the token alone is not enough:
+	// the jar still holds HTTP_TRACKID from the dead session, and this
+	// firmware keeps answering an old cookie with empty bodies even after a
+	// successful fresh login. The client then re-logs-in on every call, gets
+	// an empty reply every time, and never recovers - the exporter sat at
+	// up=0 for six minutes across many polls while a separate process talked
+	// to the same switch perfectly happily.
+	//
+	// Seen after enabling HTTPS, which restarts the switch's web server; the
+	// same thing will happen on any reboot or firmware change. A fresh jar
+	// costs nothing and makes re-login actually mean re-login.
+	if jar, err := cookiejar.New(nil); err == nil {
+		c.httpClient.Jar = jar
+	}
 }
 
 // deadSession reports whether a reply means "your session is gone" rather than
