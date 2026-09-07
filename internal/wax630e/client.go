@@ -412,8 +412,22 @@ type DeviceInfo struct {
 			DeviceMode       string `json:"deviceMode"`
 		} `json:"basicSettings"`
 		Monitor struct {
-			EthernetMACAddress   string `json:"ethernetMacAddress"`
-			SysVersion           string `json:"sysVersion"`
+			EthernetMACAddress string `json:"ethernetMacAddress"`
+			SysVersion         string `json:"sysVersion"`
+			// AltSysVersion is the OTHER firmware slot - the image that is not
+			// running. The AP keeps two, and an upgrade overwrites the idle one
+			// then boots it, so this is what the current image was upgraded FROM
+			// and what a rollback would land on.
+			//
+			// It is also the one field that might explain the downgrade prompt.
+			// Upgrading 10.8.10.10 -> 11.8.0.9 raised the prompt; upgrading
+			// 10.8.13.2 -> 11.8.0.9 did not, and between those two attempts this
+			// field had moved from V10.1.5.1 to V10.8.10.10. That is consistent
+			// with the AP comparing the offered image against the slot it is
+			// about to overwrite rather than against the running one - one data
+			// point, not a proven rule, so read it before an upgrade and record
+			// what happened.
+			AltSysVersion        string `json:"altSysVersion"`
 			DefaultGateway       string `json:"defaultGateway"`
 			DefaultGatewayStatus string `json:"defaultGatewayStatus"`
 			IPAddress            string `json:"ipAddress"`
@@ -431,8 +445,9 @@ func (c *Client) GetDeviceInfo() (DeviceInfo, error) {
 			"apName": "", "sysCountryRegion": "", "dhcpClientStatus": "",
 		},
 		"monitor": map[string]any{
-			"ethernetMacAddress": "", "sysVersion": "", "sysCountryRegion": "",
-			"defaultGateway": "", "defaultGatewayStatus": "", "ipAddress": "",
+			"ethernetMacAddress": "", "sysVersion": "", "altSysVersion": "",
+			"sysCountryRegion": "",
+			"defaultGateway":   "", "defaultGatewayStatus": "", "ipAddress": "",
 			"DeviceInfo": map[string]any{"UpTime": ""},
 		},
 	}}, &out)
@@ -653,6 +668,11 @@ func (p FirmwareProgress) Downloading() bool { return p.Percent < FirmwareDownlo
 func (p FirmwareProgress) Failed() bool { return p.Percent > FirmwareDownloadComplete }
 
 func (c *Client) fwPost(payload any, out any) error {
+	return c.fwPostTo("/LogFile", payload, out)
+}
+
+// fwPostTo posts to one of the AP's non-socketCommunication endpoints.
+func (c *Client) fwPostTo(path string, payload any, out any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.token == "" {
@@ -663,7 +683,7 @@ func (c *Client) fwPost(payload any, out any) error {
 			defer c.logoutLocked()
 		}
 	}
-	_, raw, err := c.post(payload, map[string]string{"__path": "/LogFile", "security": c.token})
+	_, raw, err := c.post(payload, map[string]string{"__path": path, "security": c.token})
 	if err != nil {
 		return err
 	}
@@ -706,11 +726,19 @@ func (c *Client) StartFirmwareUpgrade() error {
 //	10.8.10.10 vs 12.8.0.6   ->  8.10.10 vs 8.0.6   -> "downgrade"
 //	10.8.10.10 vs 10.8.13.2  ->  8.10.10 vs 8.13.2  -> clean upgrade
 //
-// Proven by trying 11.8.0.9, which is numerically newer and still produced the
-// downgrade prompt. The consequence is important: THERE IS NO INTERMEDIATE
-// THAT CLIMBS OUT OF THE 10.8.x LINE. Reaching 11.x or 12.x means accepting a
-// warning that performs a FACTORY RESET - losing every SSID and passphrase -
-// so back up with GetSSIDDetails first.
+// THAT RULE IS INCOMPLETE, and the correction matters more than the rule.
+// From 10.8.10.10 both 11.8.0.9 and 12.8.0.6 did produce the prompt. But once
+// the AP was on 10.8.13.2, 11.8.0.9 applied with NO prompt and NO factory
+// reset - which the field-comparison model says should have been impossible
+// (8.13.2 vs 8.0.9 reads as older). What else changed is that the backup slot
+// went from V10.1.5.1 to V10.8.10.10, hinting the AP may compare against the
+// slot it is overwriting rather than the running image. That is one data
+// point, so it is recorded as an observation and not asserted as the rule.
+//
+// The practical guidance: step up one release at a time, and TRY it - the
+// prompt is a warning with a Cancel button, not a refusal. Back up with
+// GetSSIDDetails first anyway, because when the reset does happen it takes
+// every SSID and passphrase with it.
 //
 // AND CHECK THE RELEASE NOTES OF THE INTERMEDIATE, NOT JUST THE TARGET. This
 // was learned the expensive way. 10.8.13.2 was picked purely because it dodged
@@ -725,9 +753,15 @@ func (c *Client) StartFirmwareUpgrade() error {
 // the upgrade-path rule can still be unsafe for the switch it is attached to.
 type UpgradeStep struct {
 	Version string
-	// CleanUpgrade is false when the AP will warn about a downgrade and
-	// factory-reset on confirmation.
+	// CleanUpgrade records whether the AP applies this release WITHOUT the
+	// downgrade prompt that factory-resets it. See Verified: where that is
+	// false, this field is a prediction and predictions here have been wrong.
 	CleanUpgrade bool
+	// Verified is true only where the hop has actually been performed on this
+	// hardware. An unverified CleanUpgrade is a guess, and the guessing record
+	// on this device is poor - a model that had 11.8.0.9 costing a factory
+	// reset was contradicted by simply doing it.
+	Verified bool
 	// Warning is a known regression or hazard in this specific release.
 	Warning string
 }
@@ -735,20 +769,22 @@ type UpgradeStep struct {
 // KnownUpgradePath is the WAX630E release ladder, newest last, with what each
 // step costs. Ordering is NETGEAR's, not semantic-version ordering.
 var KnownUpgradePath = []UpgradeStep{
-	{Version: "10.8.11.4", CleanUpgrade: true,
+	{Version: "10.8.11.4", CleanUpgrade: true, Verified: false,
 		Warning: "predates the 11.8.0.9 AP-STP fix that crashes an attached switch"},
-	{Version: "10.8.12.7", CleanUpgrade: true,
+	{Version: "10.8.12.7", CleanUpgrade: true, Verified: false,
 		Warning: "predates the 11.8.0.9 AP-STP fix that crashes an attached switch"},
-	{Version: "10.8.13.2", CleanUpgrade: true,
-		Warning: "highest 10.8.x, and the last clean step. STILL predates the " +
-			"11.8.0.9 AP-STP fix - observed taking down the MS510TXUP it is plugged into"},
-	{Version: "11.8.0.9", CleanUpgrade: false,
-		Warning: "FACTORY RESET. First release with the AP-STP fix, so this is the " +
-			"one that stops the attached switch crashing"},
-	{Version: "12.5.0.14", CleanUpgrade: false, Warning: "FACTORY RESET"},
-	{Version: "12.8.0.6", CleanUpgrade: false,
-		Warning: "FACTORY RESET. Current latest; adds SNMPv2 and fixes random AP " +
-			"reboots, client disconnects and LLDP not being sent"},
+	{Version: "10.8.13.2", CleanUpgrade: true, Verified: true,
+		Warning: "VERIFIED clean from 10.8.10.10, config kept. But it STILL predates the " +
+			"11.8.0.9 AP-STP fix and was observed taking down the MS510TXUP it plugs into, " +
+			"twice, each time needing a physical power cycle. Do not stop here"},
+	{Version: "11.8.0.9", CleanUpgrade: true, Verified: true,
+		Warning: "VERIFIED clean from 10.8.13.2 - no downgrade prompt, no factory reset, SSIDs kept. " +
+			"First release with the AP-STP fix, so this is the one that stops the attached switch " +
+			"crashing. An earlier model here predicted a factory reset for this hop and was WRONG"},
+	{Version: "12.5.0.14", CleanUpgrade: true, Verified: false, Warning: ""},
+	{Version: "12.8.0.6", CleanUpgrade: true, Verified: false,
+		Warning: "current latest; adds SNMPv2 and fixes random AP reboots, client disconnects " +
+			"and LLDP not being sent"},
 }
 
 // NextUpgradeStep returns the next release to install from the running one,
@@ -781,4 +817,48 @@ func NextUpgradeStep(running string) *UpgradeStep {
 func FirmwareURL(version string) string {
 	v := strings.TrimPrefix(strings.TrimSpace(version), "V")
 	return "https://www.downloads.netgear.com/files/GDC/WAX630E/WAX630E_firmware_V" + v + ".zip"
+}
+
+// UpgradeFromSFTP tells the AP to fetch a firmware image over SFTP and flash
+// it. This is the path that actually works on this device.
+//
+// POST /upgradeSFTP - a THIRD endpoint, distinct from /socketCommunication
+// (everything else) and /LogFile (the online upgrade). Its body is flat JSON,
+// not the query-by-example shape:
+//
+//	{"username","password","remoteIP","remoteFile","check":1}  ->  {"status":0}
+//
+// remoteFile is relative to the SFTP user's home directory.
+//
+// WHY SFTP RATHER THAN THE OBVIOUS PATHS. The online upgrade (see
+// StartFirmwareUpgrade) downloads to 100% and then fails to flash, returning
+// the 110 sentinel forever. The browser upload form caps at a size below a
+// real image. SFTP is the only route that both transfers and applies, and it
+// has the useful property that the AP pulls rather than being pushed to, so a
+// slow control channel does not matter.
+//
+// DESTRUCTIVE. The AP reboots on success and every wireless client drops. Back
+// up with GetSSIDDetails first: depending on the version being applied, the AP
+// may decide the image is a downgrade and factory-reset itself, losing every
+// SSID and passphrase. Returns as soon as the AP accepts the job - the flash
+// and reboot happen afterwards.
+func (c *Client) UpgradeFromSFTP(server, username, password, remoteFile string) error {
+	var out struct {
+		Status int `json:"status"`
+	}
+	if err := c.fwPostTo("/upgradeSFTP", map[string]any{
+		"username":   username,
+		"password":   password,
+		"remoteIP":   server,
+		"remoteFile": remoteFile,
+		// The UI always sends 1. Its meaning is not documented anywhere the
+		// device exposes; it is reproduced rather than reasoned about.
+		"check": 1,
+	}, &out); err != nil {
+		return err
+	}
+	if out.Status != 0 {
+		return fmt.Errorf("the access point rejected the SFTP upgrade (status %d)", out.Status)
+	}
+	return nil
 }
