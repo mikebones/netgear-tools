@@ -59,6 +59,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	neturl "net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1771,4 +1772,35 @@ func (c *Client) GetPage(path string) ([]byte, error) {
 		return nil, err
 	}
 	return c.do(strings.TrimPrefix(path, "/"), "", false)
+}
+
+// SessionCookies returns the cookies the current session is authenticated
+// with, for handing an already-established session to another tool.
+//
+// The use case is discovery, not operation: this switch's write payloads can
+// only be learned by watching what its own web UI submits, and reaching the UI
+// needs a logged-in browser. Exporting the session avoids re-authenticating
+// there - which matters more than convenience, because the device caps
+// concurrent logins at four and frees a slot only after 15 minutes idle, so a
+// second login is a scarce resource rather than a free one.
+//
+// Treat the result as a credential: anyone holding these cookies is
+// administrator on the switch until the session times out.
+func (c *Client) SessionCookies() []*http.Cookie {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	u, err := neturl.Parse(c.endpoint)
+	if err != nil {
+		return nil
+	}
+	return c.httpClient.Jar.Cookies(u)
+}
+
+// XSRF returns the current write token, which the UI sends as X-CSRF-XSID on
+// every set.cgi call. Exported for the same discovery reason as
+// SessionCookies; nothing in normal operation should need it.
+func (c *Client) XSRF() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.xsrf
 }

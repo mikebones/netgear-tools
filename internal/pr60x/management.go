@@ -247,3 +247,34 @@ func (c *Client) GetDualWANProfiles() (DualWANProfiles, error) {
 	err := c.CallResult("getDualWanProfiles", map[string]any{}, &out)
 	return out, err
 }
+
+// VLANAdvancedSettings currently holds one flag: whether the router's own
+// resolver answers for the DHCP domain.
+//
+// WHAT IT ACTUALLY DOES, and why it is the right lever here. The router is
+// this network's DHCP server - dhcpServerEnabled 1, domain "lan", pool
+// .126-.250 - so it is the only device that knows every client's hostname,
+// both the static reservations and dynamic leases. Turning this on makes its
+// resolver answer for <hostname>.lan.
+//
+// IT IS ONLY HALF THE JOB. The router hands out Pi-hole as the DNS server
+// (DHCP option 6), so clients never ask the router anything. The other half is
+// a conditional forward on the resolver - dnsmasq's server=/lan/<router>, or
+// Pi-hole's revServers - sending the "lan" domain back to the router.
+// Enabling this alone changes nothing observable.
+type VLANAdvancedSettings struct {
+	EnableLocalDomainDNSForwarding int `json:"enableLocalDomainDnsForwarding"`
+}
+
+// GetVLANAdvancedSettings returns the local-domain forwarding flag.
+func (c *Client) GetVLANAdvancedSettings() (VLANAdvancedSettings, error) {
+	var out VLANAdvancedSettings
+	err := c.CallResult("getVlanAdvancedSettings", map[string]any{}, &out)
+	return out, err
+}
+
+// SetVLANAdvancedSettings writes it.
+func (c *Client) SetVLANAdvancedSettings(v VLANAdvancedSettings) error {
+	var out json.RawMessage
+	return c.CallResult("setVlanAdvancedSettings", v, &out)
+}

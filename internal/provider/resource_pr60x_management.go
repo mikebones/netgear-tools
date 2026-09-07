@@ -30,6 +30,7 @@ type pr60xManagementModel struct {
 	LEDsOff           types.Bool  `tfsdk:"leds_off"`
 	MDNSReflector     types.Bool  `tfsdk:"mdns_reflector"`
 	PasswordRecovery  types.Bool  `tfsdk:"password_recovery_enabled"`
+	LocalDomainDNS    types.Bool  `tfsdk:"local_domain_dns_forwarding"`
 	SecureDNSEnabled  types.Bool  `tfsdk:"secure_dns_enabled"`
 	DefaultCommunity  types.Bool  `tfsdk:"using_default_snmp_communities"`
 }
@@ -95,6 +96,19 @@ func (r *pr60xManagementResource) Schema(_ context.Context, _ resource.SchemaReq
 				Description: "Reflect mDNS between VLANs. Off from the factory. See the resource " +
 					"description - this is the cross-VLAN service-discovery switch.",
 			},
+			"local_domain_dns_forwarding": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Description: "Whether the router's own resolver answers for its DHCP domain, so that " +
+					"`<hostname>.lan` resolves to the leased address. **The router is this network's " +
+					"DHCP server**, which makes it the only device that knows every client's hostname - " +
+					"static reservations and dynamic leases alike - and is why this lives here rather " +
+					"than on the resolver. **Enabling it alone changes nothing observable**: the router " +
+					"hands out Pi-hole as the DNS server via DHCP option 6, so clients never ask the " +
+					"router anything. The other half is a conditional forward on the resolver - dnsmasq " +
+					"`server=/lan/<router>` or Pi-hole's `revServers` - pointing the `lan` domain back " +
+					"here. Both halves, or neither.",
+			},
 			"password_recovery_enabled": schema.BoolAttribute{
 				Optional: true,
 				Computed: true,
@@ -141,6 +155,7 @@ type pr60xMgmtState struct {
 	led    pr60x.LEDControl
 	mdns   pr60x.MDNSSettings
 	recov  pr60x.PasswordRecovery
+	vadv   pr60x.VLANAdvancedSettings
 	secure *pr60x.SecureDNSSettings
 }
 
@@ -160,6 +175,9 @@ func (r *pr60xManagementResource) read() (pr60xMgmtState, error) {
 		return s, err
 	}
 	if s.recov, err = r.client.GetPasswordRecovery(); err != nil {
+		return s, err
+	}
+	if s.vadv, err = r.client.GetVLANAdvancedSettings(); err != nil {
 		return s, err
 	}
 	s.secure, err = r.client.GetSecureDNSSettings()
@@ -183,6 +201,7 @@ func (m *pr60xManagementModel) fromWire(s pr60xMgmtState) {
 	m.LEDsOff = i2b(s.led.LEDControl)
 	m.MDNSReflector = i2b(s.mdns.EnableReflector)
 	m.PasswordRecovery = i2b(s.recov.Enabled)
+	m.LocalDomainDNS = i2b(s.vadv.EnableLocalDomainDNSForwarding)
 	// The router may answer with no secure-DNS object at all; absent reads as
 	// disabled, which is both true and the safe direction.
 	m.SecureDNSEnabled = types.BoolValue(s.secure != nil && s.secure.Enabled == 1)
@@ -244,6 +263,15 @@ func (r *pr60xManagementResource) apply(plan *pr60xManagementModel, diags diagSi
 	if v := plan.MDNSReflector; !v.IsNull() && !v.IsUnknown() && b2i(v) != cur.mdns.EnableReflector {
 		if err := r.client.SetMDNSSettings(pr60x.MDNSSettings{EnableReflector: b2i(v)}); err != nil {
 			diags.AddError("Could not write the mDNS reflector setting", err.Error())
+			return
+		}
+	}
+
+	if v := plan.LocalDomainDNS; !v.IsNull() && !v.IsUnknown() &&
+		b2i(v) != cur.vadv.EnableLocalDomainDNSForwarding {
+		if err := r.client.SetVLANAdvancedSettings(
+			pr60x.VLANAdvancedSettings{EnableLocalDomainDNSForwarding: b2i(v)}); err != nil {
+			diags.AddError("Could not write the local-domain DNS forwarding setting", err.Error())
 			return
 		}
 	}
