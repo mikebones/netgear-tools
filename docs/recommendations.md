@@ -89,8 +89,8 @@ looked.
 
 `access_http` shows `admin 1`; `access_https` shows `admin 0` and
 `present 0` — no certificate has been generated, so HTTPS is not actually
-available. The exporter connects over `http://192.168.1.2`, and so does every
-admin session.
+available. The exporter connects over plain HTTP, and so does every admin
+session.
 
 The admin password crosses the LAN in clear on every login.
 
@@ -139,7 +139,7 @@ authority — the switches take SNTP from the LAN — so when the WAN is down,
 the whole network's clocks drift together. That is precisely when the
 timestamps matter.
 
-**Recommendation:** point the AP at the router (`192.168.1.1`), so it keeps
+**Recommendation:** point the AP at the LAN gateway, so it keeps
 correct time whenever the LAN is up. Leaving the router itself on the vendor
 pool is reasonable unless there is a local stratum source.
 
