@@ -37,6 +37,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"sync"
 	"time"
 )
@@ -693,4 +694,91 @@ func (c *Client) GetFirmwareProgress() (FirmwareProgress, error) {
 // Returns immediately; poll GetFirmwareProgress for the outcome.
 func (c *Client) StartFirmwareUpgrade() error {
 	return c.fwPost(map[string]any{"method": fwMethodStart, "fwUpgrade": 0}, nil)
+}
+
+// --- upgrade path -----------------------------------------------------------
+//
+// THE AP'S VERSION COMPARISON IGNORES THE MAJOR VERSION. It compares from the
+// SECOND field onward, so it decides 11.8.0.9 and 12.8.0.6 are both OLDER than
+// 10.8.10.10:
+//
+//	10.8.10.10 vs 11.8.0.9   ->  8.10.10 vs 8.0.9   -> "downgrade"
+//	10.8.10.10 vs 12.8.0.6   ->  8.10.10 vs 8.0.6   -> "downgrade"
+//	10.8.10.10 vs 10.8.13.2  ->  8.10.10 vs 8.13.2  -> clean upgrade
+//
+// Proven by trying 11.8.0.9, which is numerically newer and still produced the
+// downgrade prompt. The consequence is important: THERE IS NO INTERMEDIATE
+// THAT CLIMBS OUT OF THE 10.8.x LINE. Reaching 11.x or 12.x means accepting a
+// warning that performs a FACTORY RESET - losing every SSID and passphrase -
+// so back up with GetSSIDDetails first.
+//
+// AND CHECK THE RELEASE NOTES OF THE INTERMEDIATE, NOT JUST THE TARGET. This
+// was learned the expensive way. 10.8.13.2 was picked purely because it dodged
+// the downgrade prompt; the release notes for 11.8.0.9 say:
+//
+//	"Fixes the issue where the STP was enabled on the AP with incorrect
+//	 Forward Delay causing intermediate switch to malfunction or crash."
+//
+// 10.8.13.2 predates that fix. The AP rebooted into it and the MS510TXUP it
+// plugs into went down minutes later, taking every PoE-powered cluster node
+// with it and requiring a physical power cycle. A version that is "safe" by
+// the upgrade-path rule can still be unsafe for the switch it is attached to.
+type UpgradeStep struct {
+	Version string
+	// CleanUpgrade is false when the AP will warn about a downgrade and
+	// factory-reset on confirmation.
+	CleanUpgrade bool
+	// Warning is a known regression or hazard in this specific release.
+	Warning string
+}
+
+// KnownUpgradePath is the WAX630E release ladder, newest last, with what each
+// step costs. Ordering is NETGEAR's, not semantic-version ordering.
+var KnownUpgradePath = []UpgradeStep{
+	{Version: "10.8.11.4", CleanUpgrade: true,
+		Warning: "predates the 11.8.0.9 AP-STP fix that crashes an attached switch"},
+	{Version: "10.8.12.7", CleanUpgrade: true,
+		Warning: "predates the 11.8.0.9 AP-STP fix that crashes an attached switch"},
+	{Version: "10.8.13.2", CleanUpgrade: true,
+		Warning: "highest 10.8.x, and the last clean step. STILL predates the " +
+			"11.8.0.9 AP-STP fix - observed taking down the MS510TXUP it is plugged into"},
+	{Version: "11.8.0.9", CleanUpgrade: false,
+		Warning: "FACTORY RESET. First release with the AP-STP fix, so this is the " +
+			"one that stops the attached switch crashing"},
+	{Version: "12.5.0.14", CleanUpgrade: false, Warning: "FACTORY RESET"},
+	{Version: "12.8.0.6", CleanUpgrade: false,
+		Warning: "FACTORY RESET. Current latest; adds SNMPv2 and fixes random AP " +
+			"reboots, client disconnects and LLDP not being sent"},
+}
+
+// NextUpgradeStep returns the next release to install from the running one,
+// and whether it applies without the factory-reset prompt.
+//
+// Returns nil when already at the newest known release.
+func NextUpgradeStep(running string) *UpgradeStep {
+	running = strings.TrimPrefix(strings.TrimSpace(running), "V")
+	idx := -1
+	for i, s := range KnownUpgradePath {
+		if s.Version == running {
+			idx = i
+			break
+		}
+	}
+	// Unknown or older than the table: start at the beginning.
+	if idx < 0 {
+		return &KnownUpgradePath[0]
+	}
+	if idx+1 >= len(KnownUpgradePath) {
+		return nil
+	}
+	return &KnownUpgradePath[idx+1]
+}
+
+// FirmwareURL is where NETGEAR publishes a given release. The download is a
+// ZIP wrapping release notes and the real image; upload the .tar inside it,
+// never the .zip - the AP cannot read a version out of the archive and treats
+// it as a downgrade.
+func FirmwareURL(version string) string {
+	v := strings.TrimPrefix(strings.TrimSpace(version), "V")
+	return "https://www.downloads.netgear.com/files/GDC/WAX630E/WAX630E_firmware_V" + v + ".zip"
 }
