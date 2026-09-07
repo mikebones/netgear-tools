@@ -171,15 +171,16 @@ Captured from the UI. Each file is two requests; four in all:
 	POST /cgi/v1/file_upload      (the key)
 	POST /api/v1/https_cert_upld  {"https_cert_upld":{"file":2,"localpath":"/tmp/lighttpd/upload.tmp"}}
 
-`file` is 1 for the certificate, 2 for the key. **Headless reproduction is not
-solved yet:** `/cgi/v1/file_upload` returns HTTP 200 with body respCode 403 to
-every non-browser client tried (cookie, cookie+Bearer, token as query param,
-with Referer/Origin), so the file never spools and the import then returns
-respCode -1. The browser sends some additional session/CSRF binding not yet
-captured at the byte level. `Client.UploadCertificate` implements the recipe and
-the disable-HTTPS-first safety, ready for when that gate is understood; until
-then, install through the UI. LE renews ~every 90 days, so this is a periodic
-manual step.
+`file` is 1 for the certificate, 2 for the key. **The /cgi auth is the trick:**
+`/cgi/v1/file_upload` does NOT take `Authorization: Bearer` (that is /api only).
+It wants the token in a `session` header and the login session id in an
+`lhttpdsid` header (plus `cache-control: no-cache`); sent the /api way it answers
+HTTP 200 with respCode 403 and spools nothing, and the import then returns
+respCode -1. The import (`https_cert_upld`) is /api and uses Bearer as usual.
+`Client.UploadCertificate` does the whole thing headlessly - disable HTTPS,
+spool+import cert then key, verify certstatus, restore HTTPS - and is verified
+end to end (a Let's Encrypt cert installed this way on sw2 validates cleanly).
+Renewal can run unattended.
 
 ## Getting credentials into a recovery pod safely
 

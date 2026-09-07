@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -72,17 +73,17 @@ type apiResp struct {
 // certPEM may be a full chain (leaf + intermediates); the switch serves what it
 // is given, which is what lets a browser build the trust path.
 //
-// # Headless reproduction is BLOCKED (as of 2026-09-07)
+// # The /cgi auth, which is the whole trick
 //
-// This works from the browser UI but not yet from this client. /cgi/v1/file_upload
-// answers HTTP 200 with body respCode 403 to every non-browser request tried -
-// session cookie alone, cookie+Bearer, token as a query param, and with
-// Referer/Origin added - so the file never spools and the import then returns
-// respCode -1. The browser sends something more (a session/CSRF binding not yet
-// captured at the byte level). Until that is cracked, install via the web UI:
-// System > Protocols > HTTP, with HTTPS disabled first (see the safety note
-// above and docs/xs508tm-recovery.md). The four-request recipe here is the
-// scaffold for finishing the automation once the file_upload gate is understood.
+// /cgi/v1/file_upload authenticates DIFFERENTLY from /api/v1. The web UI's
+// request interceptor sends the token in a "session" header and the login
+// session id in an "lhttpdsid" header for /cgi requests - NOT the
+// "Authorization: Bearer" that /api uses. Sent the /api way, file_upload answers
+// HTTP 200 with body respCode 403 and spools nothing, so the import then fails
+// with respCode -1. spoolFileLocked sends the right headers; the import
+// (https_cert_upld) is /api and uses Bearer as normal. Verified end to end
+// against sw2 on 2026-09-07: a Let's Encrypt cert installed by this method
+// validates cleanly.
 func (c *Client) UploadCertificate(certPEM, keyPEM []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -173,15 +174,22 @@ func (c *Client) spoolFileLocked(content []byte) error {
 		return fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	// NB: /cgi/v1/, not /api/v1/. This endpoint is not part of the REST API. It
-	// carries the login session cookie automatically via the jar; no Bearer
-	// header (adding one made it answer an empty 200). See UploadCertificate's
-	// note on why a non-browser client still gets respCode 403 here.
+	// NB: /cgi/v1/, not /api/v1/, and it authenticates DIFFERENTLY from the REST
+	// API. The web UI's request interceptor sends the token in a "session"
+	// header and the session id in an "lhttpdsid" header for /cgi requests -
+	// NOT "Authorization: Bearer", which is /api only. Miss this and the
+	// endpoint answers HTTP 200 with respCode 403 and spools nothing. The
+	// lhttpdsid value is the session cookie set at login; pull it from the jar.
 	req, err := http.NewRequest(http.MethodPost, c.endpoint+"/cgi/v1/file_upload", &buf)
 	if err != nil {
 		return fmt.Errorf("build file_upload request: %w", err)
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("session", c.token)
+	if sid := c.sessionCookie(); sid != "" {
+		req.Header.Set("lhttpdsid", sid)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	c.lastCall = time.Now()
@@ -205,4 +213,20 @@ func (c *Client) spoolFileLocked(content []byte) error {
 			out.Resp.RespCode, out.Resp.Status)
 	}
 	return nil
+}
+
+// sessionCookie returns the value of the lhttpdsid session cookie the switch
+// sets at login, read from the client's cookie jar. The /cgi endpoints want it
+// echoed back in an "lhttpdsid" request header (see spoolFileLocked).
+func (c *Client) sessionCookie() string {
+	u, err := url.Parse(c.endpoint)
+	if err != nil {
+		return ""
+	}
+	for _, ck := range c.httpClient.Jar.Cookies(u) {
+		if ck.Name == "lhttpdsid" {
+			return ck.Value
+		}
+	}
+	return ""
 }
