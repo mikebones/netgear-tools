@@ -645,8 +645,20 @@ const (
 	// FirmwareDownloadComplete is the percent value meaning the transfer
 	// finished. Values ABOVE it are failures.
 	FirmwareDownloadComplete = 100
-	// FirmwareFailed is the sentinel the firmware returns when the flash
-	// fails after a successful download.
+	// FirmwareFailed is the sentinel the firmware returns when the ONLINE
+	// flash fails after a successful download.
+	//
+	// IT DOES NOT MEAN THE AP IS BROKEN, AND IT DOES NOT DESCRIBE AN SFTP
+	// UPGRADE AT ALL. Polling this during a successful UpgradeFromSFTP run to
+	// 12.8.0.6 returned 110 on the first read, and the AP then rebooted onto
+	// the new image with its whole wireless config byte-identical. The reading
+	// was left over from the earlier failed online attempt: /LogFile tracks
+	// the online download only, nothing drives it during an SFTP upgrade, and
+	// it keeps reporting its last value.
+	//
+	// So use this for StartFirmwareUpgrade and ignore it for the SFTP path -
+	// there, the ground truth is GetDeviceInfo().System.Monitor.SysVersion
+	// once the AP answers again.
 	FirmwareFailed = 110
 )
 
@@ -781,10 +793,15 @@ var KnownUpgradePath = []UpgradeStep{
 		Warning: "VERIFIED clean from 10.8.13.2 - no downgrade prompt, no factory reset, SSIDs kept. " +
 			"First release with the AP-STP fix, so this is the one that stops the attached switch " +
 			"crashing. An earlier model here predicted a factory reset for this hop and was WRONG"},
-	{Version: "12.5.0.14", CleanUpgrade: true, Verified: false, Warning: ""},
-	{Version: "12.8.0.6", CleanUpgrade: true, Verified: false,
-		Warning: "current latest; adds SNMPv2 and fixes random AP reboots, client disconnects " +
-			"and LLDP not being sent"},
+	{Version: "12.5.0.14", CleanUpgrade: true, Verified: false,
+		Warning: "NOT NEEDED as an intermediate - 11.8.0.9 went straight to 12.8.0.6 clean, " +
+			"so this step was skipped entirely and has never been installed here"},
+	{Version: "12.8.0.6", CleanUpgrade: true, Verified: true,
+		Warning: "VERIFIED clean DIRECT from 11.8.0.9 over SFTP - no prompt, no factory reset, " +
+			"and the full wlanSettings tree compared byte-identical before and after. Current " +
+			"latest; adds SNMPv2 and fixes random AP reboots, client disconnects and LLDP not " +
+			"being sent. The random-reboot fix is not academic: this AP was seen with an 11-minute " +
+			"uptime on 11.8.0.9 with nobody having touched it"},
 }
 
 // NextUpgradeStep returns the next release to install from the running one,
