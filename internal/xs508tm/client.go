@@ -299,6 +299,14 @@ func loginEnvelopeError(reply map[string]any) error {
 	if f, ok := env["errCode"].(float64); ok {
 		code = int(f)
 	}
+	if loginIsLocked(reply) {
+		return fmt.Errorf("the switch has locked the admin account (errCode %d, login.locked=1). "+
+			"This firmware locks the account after repeated failed logins, and a flapping management "+
+			"plane makes that easy to trigger - during a reboot loop every attempt against a half-up "+
+			"switch counts as a failure and the counter climbs fast. The lock does not clear on its own: "+
+			"clear it on the switch (re-enable the admin user) before Terraform can authenticate again. "+
+			"Note the data plane is unaffected while this is the case", code)
+	}
 	if code == errCodeLoginRejected {
 		return fmt.Errorf("rejected with errCode %d. Wrong credentials are the obvious "+
 			"cause, but this switch returns the same code when its session table is full - "+
@@ -307,6 +315,27 @@ func loginEnvelopeError(reply map[string]any) error {
 			"has been leaking sessions; wait for the idle timeout to clear them", code)
 	}
 	return fmt.Errorf("rejected by the switch (errCode %d)", code)
+}
+
+// loginIsLocked reports whether the switch is refusing the login because the
+// account is locked out, which it signals with login.locked == 1 in the reply
+// body alongside a generic errCode (2, observed on firmware 7.8.11.21) rather
+// than through a dedicated errCode. Without recognising this flag a lockout
+// surfaces as the opaque "rejected by the switch (errCode 2)", which reads like
+// a firmware-compatibility problem and sends you looking in the wrong place
+// instead of at the locked account.
+func loginIsLocked(reply map[string]any) bool {
+	login, ok := reply["login"].(map[string]any)
+	if !ok {
+		return false
+	}
+	switch v := login["locked"].(type) {
+	case float64:
+		return v != 0
+	case bool:
+		return v
+	}
+	return false
 }
 
 // findToken walks the login reply for the first plausible token value. The
