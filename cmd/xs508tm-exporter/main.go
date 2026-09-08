@@ -354,6 +354,9 @@ func main() {
 		username = flag.String("username", envOr("XS508TM_USERNAME", "admin"), "Switch username.")
 		interval = flag.Duration("interval", 60*time.Second, "Poll interval. Not below 15s.")
 		insecure = flag.Bool("insecure", true, "Skip TLS verification.")
+
+		// Management-shell health collector (opt-in via XS508TM_TELNET_ADDR).
+		telnetInterval = flag.Duration("telnet-interval", 60*time.Second, "Management-shell poll interval. Not below 30s.")
 	)
 	flag.Parse()
 
@@ -379,6 +382,31 @@ func main() {
 			p.poll()
 		}
 	}()
+
+	// Optional management-plane health collector over the root shell. It is
+	// entirely opt-in: without XS508TM_TELNET_ADDR the exporter is REST-only,
+	// exactly as before. See telnet.go for what it collects and, more
+	// importantly, the safety note on what it must never collect.
+	if addr := os.Getenv("XS508TM_TELNET_ADDR"); addr != "" {
+		tp := &telnetPoller{
+			cfg: telnetConfig{
+				addr:     addr,
+				username: envOr("XS508TM_TELNET_USER", "root"),
+				password: os.Getenv("XS508TM_TELNET_PASSWORD"),
+				interval: *telnetInterval,
+				timeout:  15 * time.Second,
+			},
+			m: newTelnetMetrics(reg),
+		}
+		if tp.cfg.password == "" {
+			log.Fatal("XS508TM_TELNET_ADDR is set but XS508TM_TELNET_PASSWORD is empty")
+		}
+		if tp.cfg.interval < 30*time.Second {
+			log.Fatalf("telnet interval %s is too aggressive for the switch management plane; use 30s or more", tp.cfg.interval)
+		}
+		log.Printf("management-shell health metrics enabled against %s every %s", addr, tp.cfg.interval)
+		go tp.run()
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
