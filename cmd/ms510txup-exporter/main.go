@@ -567,6 +567,9 @@ func main() {
 		endpoint = flag.String("endpoint", envOr("MS510TXUP_ENDPOINT", "http://192.168.1.2"), "Switch base URL.")
 		interval = flag.Duration("interval", 60*time.Second, "Poll interval. Not below 15s.")
 		insecure = flag.Bool("insecure", true, "Skip TLS verification.")
+
+		// Root-shell /proc collector (opt-in via MS510TXUP_SSH_ADDR). See ssh.go.
+		sshInterval = flag.Duration("ssh-interval", 60*time.Second, "Root-shell /proc poll interval. Not below 30s.")
 	)
 	flag.Parse()
 
@@ -591,6 +594,20 @@ func main() {
 	reg := prometheus.NewRegistry()
 	p := &poller{c: client, m: newMetrics(reg)}
 	p.poll()
+
+	// Optional root-shell /proc collector over SSH. Entirely opt-in: without
+	// MS510TXUP_SSH_ADDR the exporter is CGI-only, exactly as before. See ssh.go
+	// for what it collects and the read-only safety note on what it never does.
+	if sshCfg, err := loadSSHConfig(*sshInterval, 15*time.Second); err != nil {
+		log.Fatalf("ssh collector: %v", err)
+	} else if sshCfg != nil {
+		if sshCfg.interval < 30*time.Second {
+			log.Fatalf("ssh interval %s is too aggressive for the switch management plane; use 30s or more", sshCfg.interval)
+		}
+		sp := &sshPoller{cfg: *sshCfg, m: newSSHMetrics(reg)}
+		log.Printf("root-shell /proc metrics enabled against %s every %s", sshCfg.addr, sshCfg.interval)
+		go sp.run()
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
