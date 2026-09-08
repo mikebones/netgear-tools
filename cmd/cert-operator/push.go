@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"netgear-tools/internal/ms510txup"
 	"netgear-tools/internal/xs508tm"
 )
 
@@ -190,34 +191,22 @@ func pushWAX630E(t sshTarget) pushFunc {
 	}
 }
 
-// pushMS510TXUP installs the cert over root SSH once sw1 is rooted (mechanism in
-// progress separately - gated off by default in devices.go). The web server on
-// this switch serves /mnt/ssh/lighttpd_ssl.pem, which its polld rebuilds from
-// ssl_cert.pem + ssl_key.pem when HTTPS admin-enable is toggled. Over root SSH
-// the equivalent is to write both source files and then rebuild the combined
-// PEM and restart lighttpd directly.
+// pushMS510TXUPHTTP installs the cert over the MS510TXUP's own HTTP CGI upload -
+// fully headless, no root SSH required. The client POSTs the cert (leaf+chain)
+// and the RSA key to the switch's httprootcert.cgi / httpservercert.cgi with the
+// X-CSRF-XSID and Referer headers those endpoints demand, then toggles HTTPS
+// off->on so polld rebuilds the served PEM. See internal/ms510txup/upload.go.
 //
-// [VERIFY] sw1 root is NOT confirmed yet, so the apply command below is a best
-// guess at the on-box rebuild+restart and has never run against the device.
-// Confirm the real paths and the init script name before enabling sw1:
-//   - is the combined file /mnt/ssh/lighttpd_ssl.pem and is it cert THEN key?
-//   - is lighttpd restarted via `/etc/init.d/lighttpd restart`, or does polld
-//     only pick the new cert up on an HTTPS admin-enable toggle?
-//
-// Until then this function is wired but unreachable (SW1_ENABLED=false).
-func pushMS510TXUP(t sshTarget) pushFunc {
-	return func(ctx context.Context, certPEM, keyPEM []byte) error {
-		return sshCertPush{
-			target: t,
-			files: []sshFile{
-				{path: "/mnt/ssh/ssl_cert.pem", mode: "600", content: certPEM},
-				{path: "/mnt/ssh/ssl_key.pem", mode: "600", content: keyPEM},
-			},
-			// [VERIFY]/TODO: exact rebuild+restart for this firmware. The
-			// combined file the web server actually serves is
-			// /mnt/ssh/lighttpd_ssl.pem (cert then key); rebuild it and bounce
-			// lighttpd. Replace once validated against a rooted sw1.
-			apply: "cat /mnt/ssh/ssl_cert.pem /mnt/ssh/ssl_key.pem > /mnt/ssh/lighttpd_ssl.pem && /etc/init.d/lighttpd restart",
-		}.run(ctx)
+// endpoint MUST be the switch's IP over http:// (e.g. http://192.0.2.2): the
+// CNAME login-loops (an HSTS scheme mix), and the client drives the whole
+// exchange over port 80, flipping the HTTPS admin flag from there. The admin
+// password comes from a mounted secret, never baked in.
+func pushMS510TXUPHTTP(endpoint, password string) pushFunc {
+	return func(_ context.Context, certPEM, keyPEM []byte) error {
+		c, err := ms510txup.NewClient(endpoint, password, false)
+		if err != nil {
+			return fmt.Errorf("create ms510txup client: %w", err)
+		}
+		return c.UploadCertificate(certPEM, keyPEM)
 	}
 }

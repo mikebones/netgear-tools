@@ -133,30 +133,29 @@ func configureWap1(spec deviceSpec) (*device, error) {
 	}, nil
 }
 
-// configureSw1 wires the MS510TXUP as root SSH file-write, identical in SHAPE to
-// the PR60X - but GATED OFF by default (SW1_ENABLED, default false) because sw1
-// root is not confirmed yet (obtained separately, in progress). While disabled
-// it is listed as a TODO stub; flip SW1_ENABLED=true (and provide SW1_HOST +
-// the root key at secret/netgear/ms510txup-root-ssh) to activate it with one
-// env change. The apply command itself is a [VERIFY] TODO - see pushMS510TXUP.
+// configureSw1 wires the MS510TXUP: fully headless HTTP CGI upload, the same
+// shape as configureSw2. Enabled whenever SW1_ENDPOINT is set (an IP over
+// http://, NOT the CNAME - the CNAME login-loops). The admin password is read
+// from a mounted secret. Left unconfigured (a TODO stub) when SW1_ENDPOINT is
+// absent, so the device still appears in the table but is skipped.
+//
+// This replaces the earlier root-SSH design: sw1 no longer needs root for
+// certs. See pushMS510TXUPHTTP / internal/ms510txup/upload.go.
 func configureSw1(spec deviceSpec) (*device, error) {
-	if !envBool("SW1_ENABLED", false) {
+	endpoint := os.Getenv("SW1_ENDPOINT")
+	if endpoint == "" {
 		// Listed but inactive: nil push => TODO stub.
 		return &device{name: spec.name, secretName: spec.secretName}, nil
 	}
-	host := os.Getenv("SW1_HOST")
-	if host == "" {
-		return nil, fmt.Errorf("SW1_ENABLED=true but SW1_HOST is not set")
-	}
-	target, err := sshTargetFromEnv("SW1", host, "root")
-	if err != nil {
-		return nil, err
+	password := readMountedSecret("SW1_PASSWORD")
+	if password == "" {
+		return nil, fmt.Errorf("SW1_PASSWORD (or SW1_PASSWORD_FILE) is required when SW1_ENDPOINT is set")
 	}
 	return &device{
 		name:       spec.name,
 		secretName: spec.secretName,
-		tlsAddr:    envOr("SW1_TLS_ADDR", net.JoinHostPort(host, "443")),
-		push:       pushMS510TXUP(target),
+		tlsAddr:    envOr("SW1_TLS_ADDR", deriveAddr(endpoint)),
+		push:       pushMS510TXUPHTTP(endpoint, password),
 	}, nil
 }
 
