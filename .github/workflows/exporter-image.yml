@@ -30,7 +30,10 @@ jobs:
       # publishing the other, which may be the one that was actually fixed.
       fail-fast: false
       matrix:
-        exporter: [pr60x-exporter, xs508tm-exporter, ms510txup-exporter, wax630e-exporter, cm1000-exporter]
+        # cert-operator is not an exporter but builds identically (same generic
+        # Dockerfile, ./cmd/<name>), so it publishes through the same matrix:
+        # ghcr.io/<owner>/cert-operator:main, which the manifests reference.
+        exporter: [pr60x-exporter, xs508tm-exporter, ms510txup-exporter, wax630e-exporter, cm1000-exporter, cert-operator]
     steps:
       - uses: actions/checkout@v4
 

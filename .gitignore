@@ -25,3 +25,7 @@ scripts/serviceprofiles.snapshot.json
 # Capture them to the private ansible repo, never here.
 scripts/*running-config*.txt
 scripts/*discovery*.json
+
+# Go build artifacts (Windows)
+cert-operator.exe
+*.exe
