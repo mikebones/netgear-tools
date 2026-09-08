@@ -1109,6 +1109,64 @@ func (c *Client) SetAdminPassword(oldPassword, newPassword string) error {
 	return nil
 }
 
+// --- Advanced Debug / SSH ---------------------------------------------------
+//
+// The "Advanced Debug" page groups several unrelated toggles behind one
+// getAdvancedDebug read, but each toggle has its OWN setter - there is no
+// setAdvancedDebug. The setters recovered from the UI bundle
+// (/static/js/main.<hash>.js) are:
+//
+//	setSSH{enabled}                setSDM{enabled}
+//	setCrashDump{enabled,serverIp} setFastPathEngine{engine}
+//	setAdvancedDebugIpsec{enableDebugLog,enableHwAcceleration}
+//	setAdvancedDebugWireGuard{enabled}
+//
+// THE FIELD NAME IS THE TRAP. getAdvancedDebug REPORTS the SSH state as
+// "enableSSH", but setSSH WANTS "enabled". Sending setSSH{"enableSSH":1}, or
+// the whole getAdvancedDebug object back, both fail with rpc error 1700
+// "Invalid Advanced Debug status". The web UI reads t.enableSSH, converts it to
+// a boolean for its toggle, and on save posts setSSH({enabled: A?1:0}) - a
+// single-key object, integer 1/0. Confirmed against firmware 3.0.0.105.
+
+// AdvancedDebug is the read shape of getAdvancedDebug. Note the read field
+// names differ from the individual setters' field names (see above).
+type AdvancedDebug struct {
+	SDMPort                   int64  `json:"SDMPort"`
+	EnableCrashDump           int64  `json:"enableCrashDump"`
+	EnableIpsecDebug          int64  `json:"enableIpsecDebug"`
+	EnableIpsecHwAcceleration int64  `json:"enableIpsecHwAcceleration"`
+	EnableSDM                 int64  `json:"enableSDM"`
+	EnableSSH                 int64  `json:"enableSSH"`
+	EnableWireguardDebug      int64  `json:"enableWireguardDebug"`
+	FastPathEngine            string `json:"fastPathEngine"`
+	ServerIP                  string `json:"serverIp"`
+}
+
+// GetAdvancedDebug reads the Advanced Debug page's state, including whether the
+// admin SSH service is enabled (EnableSSH).
+func (c *Client) GetAdvancedDebug() (*AdvancedDebug, error) {
+	var out AdvancedDebug
+	if err := c.CallResult("getAdvancedDebug", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetSSH enables or disables the router's admin SSH service (port 22 on the LAN
+// management address).
+//
+// The parameter object is a single integer key {"enabled": 1|0} - NOT
+// "enableSSH", and NOT the full getAdvancedDebug object. Getting that wrong
+// yields rpc error 1700 "Invalid Advanced Debug status". See the section
+// comment above.
+func (c *Client) SetSSH(enabled bool) error {
+	v := int64(0)
+	if enabled {
+		v = 1
+	}
+	return c.Call("setSSH", map[string]int64{"enabled": v}, nil)
+}
+
 // --- port settings ----------------------------------------------------------
 //
 // getPortSettings / setPortSettings, and this was the last uncodified corner
