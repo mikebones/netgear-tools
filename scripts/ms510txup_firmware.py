@@ -120,9 +120,15 @@ def main():
 
         if args.activate:
             # file_dualStatus is read-only - the write lives on file_dualConf.
+            # Match the web UI's modalFormActive form EXACTLY (maintain_file_copy.html):
+            # imgName (slot 0=image1 / 1=image2) + imgDescriptor + imgActive=on.
+            # Omitting imgDescriptor silently no-ops the image1->image2 direction
+            # (verified 2026-09-08); the UI always sends all three fields.
             print("  activating %s ->" % target_name,
                   json.dumps(sw.set("file_dualConf",
-                                    {"imgName": target_slot, "imgActive": "on"}))[:120])
+                                    {"imgName": target_slot,
+                                     "imgDescriptor": "",
+                                     "imgActive": "on"}))[:120])
             final = dual_status(sw)
             print("  next boot: %s" % final.get("nextAct"))
             if final.get("nextAct") != target_name:

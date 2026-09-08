@@ -1549,8 +1549,13 @@ func (c *Client) GetPoEBudget() (PoEBudget, bool, error) {
 //	set.cgi?cmd=file_fwDownload         fetch and flash
 //	get.cgi?cmd=file_fwDownloadStatus   download progress
 //	get.cgi?cmd=file_fwUpdateStatus     flash progress
-//	set.cgi?cmd=file_fwNextActive       choose the boot slot
+//	set.cgi?cmd=file_dualConf           choose the boot slot (see SetNextActive)
 //	set.cgi?cmd=file_fwUploadSet        upload a local image instead
+//
+// NOTE: the boot-slot selection is file_dualConf, NOT file_fwNextActive. The
+// switch accepts file_fwNextActive (returns save_success) but SILENTLY IGNORES
+// it - next-active never moves. Verified 2026-09-08 by capturing the web UI's
+// own request (Maintenance > File Management > Dual Image > Activate).
 
 // FirmwareImages is the dual-image state.
 type FirmwareImages struct {
@@ -1592,6 +1597,31 @@ func (f FirmwareImages) InactiveSlot() string {
 		return "image1"
 	}
 	return "image2"
+}
+
+// SetNextActive selects which image boots after the next reboot (it does NOT
+// reboot). slot is "image1" or "image2" (as reported by FirmwareImages.Active /
+// InactiveSlot). This is the real bank-select: set.cgi?cmd=file_dualConf,
+// mirroring the web UI's modalFormActive form exactly.
+//
+// All three fields are required. imgName is the slot index ("0"=image1,
+// "1"=image2). imgDescriptor MUST be present (empty is fine) - omitting it makes
+// the image1->image2 direction silently no-op even though the switch returns
+// save_success. imgActive="on" performs the activation.
+//
+// After this call, GetFirmware().NextActive should equal slot; verify before
+// rebooting. There is no auto-revert on this platform, so only reboot into a
+// freshly-flashed slot with a recovery path staged.
+func (c *Client) SetNextActive(slot string) error {
+	imgName := "0"
+	if slot == "image2" {
+		imgName = "1"
+	}
+	return c.Set("file_dualConf", []Field{
+		{"imgName", imgName},
+		{"imgDescriptor", ""},
+		{"imgActive", "on"},
+	})
 }
 
 // GetFirmware reads the two image slots without contacting NETGEAR.
