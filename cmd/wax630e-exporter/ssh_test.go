@@ -23,6 +23,7 @@ Inter-|   Receive                                                |  Transmit
  face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
     lo:   500 5 0 0 0 0 0 0 500 5 0 0 0 0 0 0
   wlan0: 111111 222 0 0 0 0 0 0 333333 444 0 0 0 0 0 0
+  ifb5: 1 1 0 0 0 0 0 0 2 2 0 0 0 0 0 0
 @@THERMAL
 cpu-thermal 62500
 @@IWDEV
@@ -129,6 +130,9 @@ func TestParseSSH(t *testing.T) {
 	}
 	if _, ok := val(mfs["wax630e_proc_interface_rx_bytes"], map[string]string{"interface": "lo"}); ok {
 		t.Errorf("lo must not have a series")
+	}
+	if _, ok := val(mfs["wax630e_proc_interface_rx_bytes"], map[string]string{"interface": "ifb5"}); ok {
+		t.Errorf("ifb5 (virtual noise) must not have a series")
 	}
 
 	// --- thermal ---

@@ -310,7 +310,7 @@ func (p *sshPoller) parseNetdev(s string) {
 			continue
 		}
 		iface := strings.TrimSpace(name)
-		if iface == "" || iface == "lo" {
+		if skipIface(iface) {
 			continue
 		}
 		f := strings.Fields(rest)
@@ -550,6 +550,25 @@ func firstFloat(s string) (float64, bool) {
 		return 0, false
 	}
 	return v, true
+}
+
+// virtualIfacePrefixes are software/virtual netdevs whose /proc/net/dev byte
+// counters are noise (ingress-shaping mirrors and tunnels) - a QSDK AP exposes
+// dozens of ifb*. Only the redundant netdev counters are dropped.
+var virtualIfacePrefixes = []string{"ifb", "gre", "gretap", "sit", "tunl", "ip6tnl", "ip6gre", "teql", "erspan", "ip_vti", "ip6_vti"}
+
+// skipIface reports whether a netdev should be dropped from the per-interface
+// counters: loopback and the virtual-noise devices above.
+func skipIface(name string) bool {
+	if name == "" || name == "lo" {
+		return true
+	}
+	for _, p := range virtualIfacePrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseKV(s string) map[string]string {

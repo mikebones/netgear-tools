@@ -24,6 +24,7 @@ Inter-|   Receive                                                |  Transmit
     lo:    1000      10    0    0    0     0          0         0     1000      10    0    0    0     0       0          0
   eth1: 4294967296  67 1 2 0 0 0 0 500000 800 3 4 0 0 0 0
    br-lan: 900 9 0 0 0 0 0 0 800 8 0 0 0 0 0 0
+  ifb0: 1 1 0 0 0 0 0 0 2 2 0 0 0 0 0 0
 @@CTCOUNT
 742
 @@CTMAX
@@ -116,6 +117,9 @@ func TestParseSSH(t *testing.T) {
 	// --- netdev: lo dropped; eth1 rx bytes exercises a value past 2^32 boundary ---
 	if _, ok := val(mfs["pr60x_proc_interface_rx_bytes"], map[string]string{"interface": "lo"}); ok {
 		t.Errorf("lo must not have a series")
+	}
+	if _, ok := val(mfs["pr60x_proc_interface_rx_bytes"], map[string]string{"interface": "ifb0"}); ok {
+		t.Errorf("ifb0 (virtual noise) must not have a series")
 	}
 	if v, ok := val(mfs["pr60x_proc_interface_rx_bytes"], map[string]string{"interface": "eth1"}); !ok || v != 4294967296 {
 		t.Errorf("eth1 rx bytes = %v, %v; want 4294967296", v, ok)
