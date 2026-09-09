@@ -6,8 +6,18 @@ import (
 )
 
 func TestGeneratePassword(t *testing.T) {
-	// Characters that must never appear: ':' and shell/JSON metacharacters.
-	forbidden := ":\"'\\`$!*?;&|<>(){}[]#~% ^"
+	// The generated password must draw ONLY from the allowed pool. This is the
+	// real invariant: the PR60X backend rejects any character outside its
+	// special-char whitelist with DAI error 18, so a stray symbol would fail a
+	// live rotation. pwSymbols is already inside that whitelist (see password.go).
+	allowed := pwLowers + pwUppers + pwDigits + pwSymbols
+
+	// Characters that must NEVER appear: ':' (breaks user:pass parsing) plus the
+	// set the PR60X previously rejected wholesale ("-_.=+", DAI error 18) and the
+	// shell/JSON/glob metacharacters we deliberately keep out for paste-safety.
+	// None of these overlap pwSymbols (@#$%); if pwSymbols changes to include one,
+	// this guard fails loudly.
+	forbidden := ":\"'\\`!*?;&|<>(){}[]~^ -_.=+"
 
 	for i := 0; i < 500; i++ {
 		pw, err := generatePassword(24)
@@ -31,6 +41,11 @@ func TestGeneratePassword(t *testing.T) {
 		}
 		if strings.ContainsAny(pw, forbidden) {
 			t.Fatalf("password %q contains a forbidden character", pw)
+		}
+		for _, c := range pw {
+			if !strings.ContainsRune(allowed, c) {
+				t.Fatalf("password %q contains %q outside the allowed pool", pw, c)
+			}
 		}
 	}
 }

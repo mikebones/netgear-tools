@@ -8,17 +8,26 @@ import (
 
 // Character classes for generated passwords.
 //
-// The symbol set is deliberately tiny and conservative: it contains NO ':'
-// (which breaks user:pass parsing and some device forms) and none of the shell
-// or JSON metacharacters — no quotes, backslash, $, backtick, and none of
-// ! * ? ; & | < > ( ) { } [ ] # ~ % ^ or space. Everything here is safe to
-// paste into a shell unquoted, embed in a JSON string, and hand to the device
-// RPC without escaping.
+// The symbol set is constrained by the DEVICE, not just by shell/JSON safety.
+// The PR60X backend (gf-configd / libgf-dai) enforces a password special-char
+// whitelist and rejects anything outside it with DAI error 18: "Password does
+// not allow configuring other than allowed special characters." Empirically the
+// earlier set "-_.=+" was rejected wholesale (none of - _ . = + are allowed),
+// which stalled a rotation. The device's own web UI validates the password field
+// against the class [!@#$%^&*] (the smallest of several allowed classes seen in
+// the shipped SPA bundle main.e919b37a.js; the larger classes are supersets), so
+// every character below is inside that whitelist and accepted by setAdminPassword.
+//
+// Within that whitelist we further pick @ # $ % — they carry no ':' (which breaks
+// user:pass parsing), no quotes/backslash/backtick, and none of the glob/redirect
+// metacharacters * ? & | < > ( ) [ ] { } ~ ^ ! or space. The password is only ever
+// consumed programmatically (Vault API → exporters / cert-operator / terraform),
+// never typed, but keeping it paste-safe costs nothing.
 const (
 	pwLowers  = "abcdefghijklmnopqrstuvwxyz"
 	pwUppers  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	pwDigits  = "0123456789"
-	pwSymbols = "-_.=+"
+	pwSymbols = "@#$%"
 )
 
 // generatePassword returns a cryptographically strong password of the given
