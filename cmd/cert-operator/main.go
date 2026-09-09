@@ -29,16 +29,27 @@
 //
 // This binary carries NO device addresses, credentials, or hostnames. Every
 // per-device value comes from the environment (endpoints, SSH host) or a
-// mounted file (the TLS secrets, the switch admin password, the router root SSH
-// key). The manifests in the private repo supply those; nothing sensitive is
+// mounted file (the TLS secrets, the switch admin password, the SSH private
+// keys). The manifests in the private repo supply those; nothing sensitive is
 // baked in here.
 //
-// # Phase 1 scope
+// # Install mechanisms: root primary, web fallback
 //
-// Only the two fully-automatable devices are wired up: sw2 (XS508TM, headless
-// REST upload) and router (PR60X, root SSH). sw1 (MS510TXUP) and wap1 (WAX630E)
-// are left as clearly-marked TODO stubs in devices.go - see the per-device
-// notes there and OPERATOR-PLAN.md in the manifests repo.
+// All four appliances are wired up, each with a ROOT path as the primary
+// installer and (where one exists) the older web/API upload kept as an
+// automatic fallback that runs only when the root path is unreachable:
+//
+//   - router (PR60X):    root SSH, write server.pem + restart lighttpd.
+//   - sw2 (XS508TM):     root telnet (:2323) primary, headless REST upload fallback.
+//   - sw1 (MS510TXUP):   root dropbear (:2222) primary - and the important one,
+//                        since sw1's admin is locked out and the CGI upload
+//                        cannot run - with the HTTP CGI upload as fallback.
+//   - wap1 (WAX630E):    root SSH, mirroring the WAX630E root-cert runbook.
+//
+// Root is preferred because it needs no admin web/management session, which is
+// what hits the switches' session limits and lockouts. See push.go
+// (firstWorking) and devices.go for the per-device wiring, and OPERATOR-PLAN.md
+// in the manifests repo.
 package main
 
 import (

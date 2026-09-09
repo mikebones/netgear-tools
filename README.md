@@ -1,33 +1,55 @@
 # netgear-tools
 
-Reverse-engineered clients, a Terraform provider and Prometheus exporters for
-NETGEAR network hardware, driven entirely through each device's **local**
-management API. No NETGEAR account, no Insight subscription, no cloud
-dependency.
+Reverse-engineered clients, a Terraform provider, a certificate operator and
+Prometheus exporters for NETGEAR network hardware, driven entirely through each
+device's **local** management interfaces. No NETGEAR account, no Insight
+subscription, no cloud dependency.
 
-Four devices, four completely different protocols behind four different web
-UIs. The one thing they all share is a `lhttpdsid` lighttpd session cookie.
+The devices speak four completely different protocols behind four different web
+UIs (the one thing they share is a `lhttpdsid` lighttpd session cookie), plus
+one cable modem. On top of the clients sit three things that actually run:
+
+- a **Terraform provider** (`netgear_*`) that manages device configuration;
+- a **cert-operator** that installs cert-manager-renewed TLS certs onto the
+  appliances, **root SSH/telnet first, web upload as automatic fallback**;
+- one **Prometheus exporter per device**, several of which now read over a root
+  shell so they hold **zero** web-management sessions.
+
+> Addresses in this README are RFC 5737 documentation IPs (`192.0.2.0/24`) or
+> `<placeholders>`. Supply real endpoints and credentials from the environment
+> or a secret store — never commit them here.
 
 ```
-internal/pr60x/       router client   - JSON-RPC 2.0 over one endpoint
-internal/xs508tm/     switch client   - REST at /api/v1/
-internal/wax630e/     AP client       - query-by-example over one endpoint
-internal/ms510txup/   PoE switch client - signed CGI + RSA CSRF
+internal/pr60x/       router client     - JSON-RPC 2.0 over one endpoint
+internal/xs508tm/     switch client     - REST at /api/v1/ (+ root telnet push)
+internal/wax630e/     AP client         - query-by-example over one endpoint
+internal/ms510txup/   PoE switch client - signed CGI + RSA CSRF (+ root dropbear)
+internal/cm1000/      cable-modem client - DOCSIS status scrape
 internal/provider/    Terraform provider, built on the clients
+
+cmd/cert-operator/    installs renewed TLS certs onto the appliances
 cmd/pr60x-exporter/   Prometheus exporter for the router
-cmd/xs508tm-exporter/ Prometheus exporter for the switch
+cmd/xs508tm-exporter/ Prometheus exporter for the switch (REST + optional root shell)
+cmd/ms510txup-exporter/ Prometheus exporter for the PoE switch (root SSH; opt-in CGI)
+cmd/wax630e-exporter/ Prometheus exporter for the access point
+cmd/cm1000-exporter/  Prometheus exporter for the cable modem
+
+deploy/kubernetes/    a worked exporter manifest (PR60X) as a template
 scripts/              the Python used to reverse engineer each protocol
-deploy/kubernetes/    exporter manifests
 ```
 
 ## Device coverage
 
-| Device | Protocol | API mapped | Auth | Client | Exporter | Terraform |
+| Device | Protocol | Auth | Client | Exporter | Cert install | Terraform |
 | --- | --- | --- | --- | --- | --- | --- |
-| **PR60X** router | JSON-RPC 2.0 | 238 methods | verified | yes | deployed | 7 resources |
-| **XS508TM** switch | REST `/api/v1/` | 288 routes, 199 read | verified | yes | built | 2 resources |
-| **MS510TXUP** switch | signed CGI + RSA CSRF | 550 endpoints, 234 read | verified | yes | — | 3 resources |
-| **WAX630E** AP | query-by-example | 27 API entries + templates | verified | yes | — | 1 resource |
+| **PR60X** router | JSON-RPC 2.0 | `Security:` header + cookie | yes | yes | root SSH | yes |
+| **XS508TM** switch | REST `/api/v1/` | Bearer token | yes | yes | root telnet, REST fallback | yes |
+| **MS510TXUP** switch | signed CGI + RSA CSRF | obfuscated pw + `X-CSRF-XSID` | yes | yes | root dropbear, CGI fallback | yes |
+| **WAX630E** AP | query-by-example | `time`/`security` headers | yes | yes | root SSH | yes |
+| **CM1000v2** modem | HTML/JSON status | basic | yes | yes | — (ISP-provisioned) | — |
+
+The four appliance protocols are documented in full below; the modem is a
+read-only DOCSIS status scrape and has no management surface of its own.
 
 ## The four protocols
 
@@ -72,13 +94,18 @@ which is also what a duplicate returns.
 
 Two firmware quirks the code absorbs so dashboards do not have to:
 
-- **Counters are signed 32-bit and go negative** past 2^31. The live switch
-  returns `octRx: -13233116` on its uplinks; the exporter unwraps them.
+- **Counters are signed 32-bit and go negative** past 2^31. A busy uplink
+  returns e.g. `octRx: -13233116`; the exporter unwraps them.
 - **`linkup`/`linkstatus` cannot be trusted.** On this firmware they report 0
-  for the two ports carrying all the traffic and 1 for six idle ones, verified
-  against both traffic counters and LLDP. The exporter publishes the raw field
-  as `port_reported_link_up` with a help string saying so, rather than silently
+  for the ports carrying all the traffic and 1 for idle ones, verified against
+  both traffic counters and LLDP. The exporter publishes the raw field as
+  `port_reported_link_up` with a help string saying so, rather than silently
   "fixing" it.
+
+On the modified-firmware unit, a **root telnet shell** (`:2323`) is also
+available — used by the cert-operator (primary install path) and, optionally,
+by the exporter for management-plane health. It never touches the Broadcom diag
+console; see the safety note under Exporters.
 
 ### MS510TXUP switch — signed CGI behind an RSA CSRF token
 
@@ -89,7 +116,6 @@ cheerfully reports `SNTP is Enabled` with a server configured. Setting it to 0
 synced the clock within two poll cycles. The switch has no RTC, so it boots at
 Dec 2022 every time and SNTP is the only thing standing between you and
 three-year-old log timestamps.
-
 
 Legacy jQuery/Backbone UI and by some distance the most defended of the four.
 Four mechanisms, all reproduced in `scripts/ms510txup_login.py`:
@@ -102,9 +128,8 @@ Four mechanisms, all reproduced in `scripts/ms510txup_login.py`:
   tens digit at index 123 and a ones digit at index 289.
 - **Login is a handshake**: `POST cgi/set.cgi?cmd=home_loginAuth` returns an
   `authId`, then `home_loginStatus` is polled with it until it answers `ok`.
-  It genuinely returns a non-ok status on the first poll.
-- **`sess` is not a session token**, and this is the part that cost the most
-  time. The UI base64-decodes it into three concatenated fields:
+- **`sess` is not a session token**. The UI base64-decodes it into three
+  concatenated fields:
 
   ```
   tabid   = sess[0:32]     32-char session id
@@ -119,127 +144,180 @@ Four mechanisms, all reproduced in `scripts/ms510txup_login.py`:
   X-CSRF-XSID: base64(RSA_PKCS1v15(tabid, pubkey))
   ```
 
-  The padding is randomised, so the value is different on every request by
-  design. Without the header the switch answers **404** — not 401, not 403 —
-  which is indistinguishable from a wrong URL and is why this looked for a
-  long time like an unfound endpoint rather than an unfound credential. The
-  two gates are independent and checked in order: no signature is a 400, no
-  CSRF header is a 404.
+  The padding is randomised, so the value differs on every request by design.
+  Without the header the switch answers **404** — not 401, not 403 — which is
+  indistinguishable from a wrong URL. The two gates are independent and checked
+  in order: no signature is a 400, no CSRF header is a 404.
 
-With all four in place, all 234 read commands are reachable. Confirmed live:
-`home_sts` (per-port link, speed and PoE), `sys_info`, `lldp_neighbor`,
-`log_remote`, `sys_dnsConf`.
+There is a **4-slot web session table**, shared by the UI, the exporter's
+optional CGI path and Terraform. Fill it and the admin locks out. This is why
+the exporter defaults to a root shell and the provider releases its session per
+call (see below).
 
-Its SSH CLI works fully and is a viable alternative path, though config mode is
-limited and has **no `logging` command at all** — which is exactly why syslog
-needs the CGI API.
+On the modified-firmware unit, **root dropbear** (`:2222`, user `sshd` → uid 0)
+is the primary path for both the exporter and the cert-operator, and needs no
+web session at all.
 
 ### WAX630E access point
 
-Shares the router's transport - `POST /socketCommunication`, `lhttpdsid`
-cookie - and almost nothing else.
+Shares the router's transport — `POST /socketCommunication`, `lhttpdsid` cookie
+— and almost nothing else.
 
-**Login is not in the API map**, which is what makes it hard to find. The
-bundle's 27-entry map has `logout` and `isloggedin` but no login, and the one
-`/login` route in the whole bundle is `customerLogin` - the NETGEAR *cloud*
-account modal, taking `{email,password}` from `#loginEmail`. The local admin
-login is an ordinary query-by-example POST that carries a `time` header instead
-of the usual `security` one:
+**Login is not in the API map**. The bundle's 27-entry map has `logout` and
+`isloggedin` but no login, and the one `/login` route is `customerLogin` — the
+NETGEAR *cloud* account modal. The local admin login is an ordinary
+query-by-example POST that carries a `time` header instead of the usual
+`security` one:
 
 ```
-POST /socketCommunication          time: <Date.toString(), +45min, "(Zone)" stripped>
+POST /socketCommunication   time: <Date.toString(), +45min, "(Zone)" stripped>
   {"system":{"basicSettings":{"adminName":"admin","adminPasswd":"..."}}}
-  -> {"status":0,...}              and the token in the `security` RESPONSE header
+  -> {"status":0,...}   and the token in the `security` RESPONSE header
 ```
 
 The web UI then stores `btoa(token)` in a **non-HttpOnly `ssid` cookie** and
-sends `atob(cookie)` back as the `security` request header - so for a real
-client the response header value *is* the request header value and the base64
-round trip can be skipped entirely.
+sends `atob(cookie)` back as the `security` request header — so for a real
+client the response header value *is* the request header value.
 
-Everything after that is **query-by-example**: POST the JSON shape you want
-with empty values and the device fills it in; the same shape with values set is
-the write. There is no method name anywhere, and an invented shape is rejected,
-so the templates in `client.go` are transcribed from the bundle rather than
-guessed.
+Everything after that is **query-by-example**: POST the JSON shape you want with
+empty values and the device fills it in; the same shape with values set is the
+write. An invented shape is rejected, so the templates in `client.go` are
+transcribed from the bundle rather than guessed.
 
 Two status codes look alike and are not:
 
-- **`status: 100`** - not authenticated. The UI turns this into a bounce to
-  `AP_login`. Every wrong guess at the login shape returns it, which is what
-  made the login look unreachable for so long.
-- **`status: 1, err_code: 28 "Invalid configuration"`** - authenticated fine,
+- **`status: 100`** — not authenticated. Every wrong guess at the login shape
+  returns it, which made the login look unreachable for so long.
+- **`status: 1, err_code: 28 "Invalid configuration"`** — authenticated fine,
   payload shape unrecognised.
 
 Watch the lockout: more than two consecutive bad passwords disables login for a
-firmware-chosen interval, returned as `err_code 26` with a `time` in minutes.
-Probe the shape, not the password.
+firmware-chosen interval (`err_code 26`, `time` in minutes). Probe the shape,
+not the password. On the rooted unit, **root SSH** is the cert-operator's
+install path.
 
-## Terraform provider
+## cert-operator — TLS cert renewal onto the appliances
 
-Each device family is configured separately and every one is optional — a
-configuration that only manages the switch need not invent router credentials.
+cert-manager already issues and renews the appliance certificates as Kubernetes
+TLS secrets. `cmd/cert-operator` closes the last-mile gap: getting the renewed
+material onto boxes that have no idea cert-manager exists.
 
-```hcl
-terraform {
-  required_providers { netgear = { source = "local/mikebones/netgear" } }
-}
+It is a poll loop, not an informer. Each cycle, for every managed device:
 
-provider "netgear" {
-  pr60x   = { endpoint = "https://192.168.1.1" }
-  xs508tm   = { endpoint = "http://192.168.1.223" }
-  wax630e   = { endpoint = "https://192.168.1.136" }
-  ms510txup = { endpoint = "http://192.168.1.2" }
-}
+1. Read the target cert+key from the mounted TLS secret (`tls.crt`/`tls.key`).
+2. TLS-dial the device on `:443` and read the leaf it currently **serves**;
+   compare SHA-256 fingerprints against the target.
+3. If they match, do nothing (idempotent, quiet). If they differ, push by the
+   device's mechanism, then re-dial to confirm the new cert is live before
+   recording success.
+
+### SSH/root primary, web upload as automatic fallback
+
+Every device now has a **root path as the primary installer**, with the older
+web/API upload kept only as an automatic fallback that runs when the root path
+is unreachable (dial/auth failure). Root is preferred because it needs no admin
+web/management session — which is exactly what hits the switches' session limits
+and lockouts. `firstWorking()` in `push.go` runs the primary and, only on error,
+the fallback, logging which mechanism actually served the cert.
+
+| Device | Primary (root) | Fallback (web) |
+| --- | --- | --- |
+| **PR60X** (`router`) | SSH: write `/etc/lighttpd/server.pem` + split key/cert, restart lighttpd | — |
+| **XS508TM** (`sw2`) | telnet `:2323`: write the on-box cert files, reload lighttpd (no admin session, cannot be locked out) | REST upload (disable HTTPS → spool → verify → restore HTTPS) |
+| **MS510TXUP** (`sw1`) | dropbear `:2222`: write `/mnt/ssh/*.pem`, rebuild the combined PEM, re-spawn lighttpd — **works even though sw1's admin is locked out** | HTTP CGI upload (`httprootcert.cgi` / `httpservercert.cgi`, then toggle HTTPS) |
+| **WAX630E** (`wap1`) | SSH: write `/sysconfig/ssl/*`, rebuild `server.pem` + the `cert_generated` guard, copy to `/var/ssl`, re-spawn lighttpd | — |
+
+The binary carries **no** device addresses, credentials or hostnames: every
+per-device value comes from the environment (`ROUTER_HOST`, `SW1_HOST`,
+`SW1_SSH_PORT`, `SW2_TELNET_ADDR`, `SW2_ENDPOINT`, `WAP1_HOST`, …) or a mounted
+file (the TLS secrets, the switch admin password, the SSH private keys — the
+`*_FILE` form is preferred for anything multi-line or secret). A device with no
+env set is skipped; one listed but not yet wired is a quiet TODO stub.
+
+```bash
+go build ./cmd/cert-operator
+# configured entirely from env / mounted secrets; see cmd/cert-operator/devices.go
+POLL_INTERVAL=15m LISTEN=:9814 CERT_SECRET_NAMESPACE=netgear-certs ./cert-operator
 ```
 
-Passwords come from `PR60X_PASSWORD` / `XS508TM_PASSWORD` / `WAX630E_PASSWORD` /
-`MS510TXUP_PASSWORD`. These devices have
-no API-token concept, so that is the credential owning the hardware — source it
-from a secret store, not a `.tf` file.
-
-**The `required_providers` alias must match the resource prefix.** Leaving it
-as `pr60x` while resources are `netgear_*` makes Terraform infer a second
-provider and hunt for `registry.terraform.io/hashicorp/netgear`.
-
-### Resources
-
-| Resource | Notes |
-| --- | --- |
-| `netgear_pr60x_service_profile` | Named protocol/port definition. Full CRUD verified live. |
-| `netgear_pr60x_port_forwarding_rule` | References service profiles **by name**. There is no external-port field, so port translation means pointing the two sides at different profiles. |
-| `netgear_pr60x_vlan_dhcp_dns` | DHCP option 6 — the usual cause of split DNS. |
-| `netgear_pr60x_remote_syslog` | Ships router logs to a UDP collector. |
-| `netgear_pr60x_sqm` | Bufferbloat shaping. Rates must be 300 Kbps - 5 Gbps *even when disabled*; error 3103 means out of range. |
-| `netgear_pr60x_upnp` | Exists mainly to be declared `false` and re-asserted. |
-| `netgear_pr60x_static_route` | **Unverified** — field names inferred; the device has no routes to read back. |
-| `netgear_xs508tm_igmp_snooping` | Ships off; multicast otherwise floods every port. |
-| `netgear_xs508tm_syslog_server` | Also sets the global remote-logging flag, which ships disabled — a server entry alone does nothing. |
-
-Data sources: `netgear_pr60x_device_info`, `_service_profiles`,
-`_port_forwarding_rules`, `_vlan_profiles`, `_dhcp_leases`, `_wan_status`.
+Metrics (`netgear_cert_*`): `served_matches_target`, `notafter_seconds`,
+`push_success_timestamp`, `push_errors_total`, `last_reconcile_timestamp`.
 
 ## Exporters
 
-Both poll on their own schedule and serve a **cached snapshot** rather than
-touching the device per scrape. This is not premature caution: the router's
-config daemon wedges under rapid load, and the XS508TM's management web server
-returns 502 and then refuses connections outright when driven at Terraform's
-normal request rate. Neither affects the data plane — switching and routing
-carried on throughout — but these are small embedded servers and they do fall
-over.
-
-So: **one replica each**, a 60s default poll, and the binaries refuse an
-interval below 15s. The XS508TM client retries 502/503/504 and connection
-resets with backoff.
+Every exporter polls on its **own schedule** and serves a **cached snapshot**
+rather than touching the device per scrape. This is not premature caution: the
+router's config daemon wedges under rapid RPC load (~50 back-to-back reads), and
+the XS508TM's management web server returns 502 and then refuses connections
+when driven at Terraform's request rate. Neither affects the data plane, but
+these are small embedded servers and they do fall over. So: **one replica each**,
+a 60s default poll, and floors below which the binaries refuse to run.
 
 Port counters are exposed as **gauges, not counters**: the devices zero them on
-reboot with no reset signal, so Prometheus would read a reboot as a counter
-reset and invent an enormous rate.
+reboot with no reset signal, so Prometheus would otherwise read a reboot as a
+counter reset and invent an enormous rate.
+
+| Exporter | Default port | Transport | Key env / flags |
+| --- | --- | --- | --- |
+| `pr60x-exporter` | `:9812` | JSON-RPC | `PR60X_PASSWORD`; `--endpoint`, `--interval` |
+| `xs508tm-exporter` | `:9813` | REST (+ optional root telnet) | `XS508TM_PASSWORD`; `--endpoint`, `--interval`; opt-in `XS508TM_TELNET_ADDR` |
+| `ms510txup-exporter` | `:9814` | root SSH `/proc` (+ opt-in CGI) | `MS510TXUP_SSH_ADDR`, `MS510TXUP_SSH_KEY_FILE`; opt-in `MS510TXUP_CGI_ENABLE` |
+| `wax630e-exporter` | — | query-by-example | `WAX630E_PASSWORD`; `--endpoint` |
+| `cm1000-exporter` | `:9816` | HTML/JSON status | `CM1000_PASSWORD`; `--endpoint`, `--interval` |
+
+### The session-limit tradeoff (MS510TXUP)
+
+`ms510txup-exporter` is **SSH-only by default and opens zero web sessions.** Its
+primary and default data path is the dropbear root shell (`:2222`, ECDSA key
+auth), reading the RealTek RTL93xx `/proc` tree — per-port byte/packet counters,
+the `/proc/linkdown` reason ring (why and when a port bounced), `/proc/poe`,
+SFP EEPROM, and VLAN membership. Everything it runs is a **passive read** of
+`/proc`; it never writes a register, never enables a sampler, never touches the
+CLI or SDK diag shell.
+
+- **Required:** `MS510TXUP_SSH_ADDR` (`<switch-host>:2222`) and
+  `MS510TXUP_SSH_KEY_FILE`. Optional `MS510TXUP_SSH_USER` (default `sshd`),
+  `MS510TXUP_SSH_HOSTKEY`. Without the SSH address the exporter refuses to start
+  rather than come up serving an empty `/metrics` that looks like a healthy
+  switch. `ms510txup_ssh_up` is the availability signal to alert on.
+- **Opt-in CGI fallback:** set `MS510TXUP_CGI_ENABLE=true` (plus
+  `MS510TXUP_ENDPOINT` and `MS510TXUP_PASSWORD`, or the `--cgi` flag) to recover
+  the metrics that are **not** in `/proc` — per-port link up/speed/duplex,
+  error/collision counters, STP state, EEE. **Enabling it consumes ONE of the
+  switch's four web session slots for the life of the process**, shared with the
+  UI and Terraform, which is why it is off by default.
+
+The old `--endpoint` / `--interval` flags and the default `MS510TXUP_PASSWORD`
+requirement are **gone**: the SSH path uses `--ssh-interval` (floor 30s) and the
+CGI path uses `--cgi-interval` (floor 15s), and the password is needed only when
+CGI is enabled.
+
+### The management-shell collector (XS508TM) — and a hard safety rule
+
+`xs508tm-exporter` is REST by default. Setting `XS508TM_TELNET_ADDR` (with
+`XS508TM_TELNET_PASSWORD`) turns on an **optional** management-plane health
+collector over the root shell: management-CPU load and memory, the switching
+daemon's RSS/threads, and how full the config partition is — "is this appliance
+about to fall over" signals not visible over REST.
+
+It runs a **fixed set of passive reads only** (`cat /proc/*`, `df`). It must
+never touch the Broadcom SDK diag console (`/sbin/devshell`,
+`/tmp/consolepipe`, the diag socket on `127.0.0.1:2222`): doing so was measured
+to starve the switching daemon's watchdog into a **hard switch reboot roughly
+every 6 minutes**. Die temperature and other ASIC metrics are therefore
+deliberately not collected here; the safe route for those is SNMP.
+
+### Building and running
 
 ```bash
-go build ./cmd/pr60x-exporter   && PR60X_PASSWORD=...   ./pr60x-exporter
-go build ./cmd/xs508tm-exporter && XS508TM_PASSWORD=... ./xs508tm-exporter
+go build ./cmd/pr60x-exporter    && PR60X_PASSWORD=...   ./pr60x-exporter    --endpoint "$PR60X_ENDPOINT"
+go build ./cmd/xs508tm-exporter  && XS508TM_PASSWORD=... ./xs508tm-exporter  --endpoint "$XS508TM_ENDPOINT"
+go build ./cmd/wax630e-exporter  && WAX630E_PASSWORD=... ./wax630e-exporter  --endpoint "$WAX630E_ENDPOINT"
+go build ./cmd/cm1000-exporter   && CM1000_PASSWORD=...  ./cm1000-exporter   --endpoint "$CM1000_ENDPOINT"
+
+# SSH-only by default; no --endpoint/--interval, no password unless CGI is enabled.
+go build ./cmd/ms510txup-exporter
+MS510TXUP_SSH_ADDR=<switch-host>:2222 MS510TXUP_SSH_KEY_FILE=/path/to/key ./ms510txup-exporter
 ```
 
 Sample output:
@@ -247,30 +325,107 @@ Sample output:
 ```
 pr60x_up 1
 pr60x_management_mode{mode="local"} 1
-pr60x_system_temperature_celsius 42
-pr60x_firewall_connections 6400
-pr60x_upnp_enabled 0
-
 xs508tm_up 1
-xs508tm_igmp_snooping_enabled 1
-xs508tm_switch_rx_octets 4.286587466e+09
 xs508tm_lldp_neighbor{local_port="9",remote_sysname="PR60X"} 1
+ms510txup_ssh_up 1
+ms510txup_proc_port_linkdown_reason_info{port="9",reason="HW-NoCableDetected"} 1
 ```
 
 ### Deploying
 
-`Dockerfile` builds a static binary on distroless; CI publishes multi-arch to
-GHCR. `deploy/kubernetes/` carries Deployment, Service and ServiceMonitor.
+`Dockerfile` builds **one** exporter (or `cert-operator`) selected by the
+`EXPORTER` build arg onto a distroless static base; the binary lands at a fixed
+`/exporter` path so manifests differ only in image and args. CI
+(`.github/workflows/exporter-image.yml`) tests, vets and publishes all six
+multi-arch (`amd64`+`arm64`) to GHCR on push and on release.
+`deploy/kubernetes/pr60x-exporter.yaml` is a worked template (Namespace,
+Secret/Vault, Deployment, Service).
 
 Two things that cost time the first time:
 
-- **`runAsNonRoot: true` needs an explicit `runAsUser`.** The distroless base
-  declares `USER nonroot` by *name*, and kubelet will not verify a non-numeric
-  user — it refuses with `CreateContainerConfigError`. Pin 65532.
+- **`runAsNonRoot: true` needs an explicit numeric `runAsUser`.** The distroless
+  base declares `USER nonroot` by *name*; kubelet refuses a non-numeric user
+  with `CreateContainerConfigError`. Pin 65532.
 - Multi-arch matters on a mixed cluster; a single-arch image simply fails to
   pull on the wrong node, with no obvious clue why.
 
-## Building the provider
+## Terraform provider
+
+Each device family is configured separately and every one is optional — a
+configuration that only manages the switch need not invent router credentials.
+A device counts as configured when a password is found for it (block or env);
+absence means "not managed here", not an error.
+
+```hcl
+terraform {
+  required_providers { netgear = { source = "local/mikebones/netgear" } }
+}
+
+provider "netgear" {
+  pr60x     = { endpoint = "https://192.0.2.1" }
+  xs508tm   = { endpoint = "http://192.0.2.3" }
+  wax630e   = { endpoint = "https://192.0.2.5" }
+  ms510txup = { endpoint = "http://192.0.2.2" }
+}
+```
+
+Passwords come from `PR60X_PASSWORD` / `XS508TM_PASSWORD` / `WAX630E_PASSWORD` /
+`MS510TXUP_PASSWORD`. These devices have no API-token concept, so that is the
+credential owning the hardware — source it from a secret store (e.g. Vault), not
+a `.tf` file, so it never lands in state or version control.
+
+**The `required_providers` name must match the resource prefix (`netgear`).**
+Leaving it as e.g. `pr60x` while resources are `netgear_*` makes Terraform infer
+a second provider and hunt for `registry.terraform.io/hashicorp/netgear`.
+
+### Session handling
+
+Terraform *kills* the provider process rather than shutting it down cleanly, and
+these appliances free a management session only on explicit logout or an idle
+timeout. Two mechanisms keep repeated plans from leaking sessions:
+
+- **`main.go` calls `provider.Cleanup()` on every exit path** (not `defer`,
+  because `log.Fatal` would skip it) to hand back any session still open.
+- **The MS510TXUP client releases its session per call**
+  (`SetReleasePerCall(true)` in `provider.go`). Its 4-slot table fills after a
+  few plans inside the idle window otherwise, locking the admin out
+  (`errCode 481`). The client's own mutex still keeps at most one login in
+  flight per device, so this is safe under Terraform's default parallelism. The
+  long-lived exporter, which shuts down cleanly, leaves this off and reuses its
+  one session.
+
+### Resources
+
+The provider manages configuration on **all four appliances**. The authoritative
+list is `Resources()` in `internal/provider/provider.go`; grouped:
+
+- **PR60X** (`netgear_pr60x_*`): `service_profile`, `port_forwarding_rule`,
+  `static_route`, `vlan_dhcp_dns`, `remote_syslog`, `sqm`, `upnp`,
+  `static_leases`, `port_settings`, `management`, `time`.
+- **XS508TM** (`netgear_switch_*` / `netgear_xs508tm_*`): `igmp_snooping`,
+  `port_mtu`, `syslog_server`, `ssh`, `ip_routing`, `dhcp_relay`, `network`,
+  `web_access`.
+- **MS510TXUP** (`netgear_ms510_*`): `sntp`, `dns`, `syslog_server`, `vlan`,
+  `igmp_snooping`, `igmp_querier_vlan`, `poe_port`, `stp_port`, `port_max_frame`,
+  `web_access`.
+- **WAX630E** (`netgear_ap_*` / `netgear_wax630e_*`): `network`, `syslog`,
+  `radio`, `ssid`, `snmp`, `management`, `time`.
+
+A few notes worth carrying forward:
+
+- `netgear_pr60x_port_forwarding_rule` references service profiles **by name**;
+  there is no external-port field, so port translation means pointing the two
+  sides at different profiles.
+- `netgear_pr60x_sqm` rates must be 300 Kbps – 5 Gbps *even when disabled*;
+  error 3103 means out of range.
+- `netgear_switch_syslog_server` (and its MS510 sibling) also sets the global
+  remote-logging flag, which ships disabled — a server entry alone does nothing.
+- `netgear_pr60x_static_route` field names are inferred, not verified live.
+
+Data sources (PR60X): `netgear_pr60x_device_info`, `_service_profiles`,
+`_port_forwarding_rules`, `_vlan_profiles`, `_dhcp_leases`, `_wan_status`.
+
+### Building the provider
 
 ```bash
 go build -o ~/.terraform.d/plugins/local/mikebones/netgear/0.1.0/<os>_<arch>/terraform-provider-netgear .
@@ -278,77 +433,65 @@ cd examples && terraform init && PR60X_PASSWORD=... terraform plan
 ```
 
 `~/.terraformrc` (and `%APPDATA%/terraform.rc` on Windows) needs a
-`filesystem_mirror` whose `include` covers `local/*/*`.
+`filesystem_mirror` whose `include` covers `local/*/*`. `scripts/install_provider.sh`
+automates the build-and-place step.
 
 ## scripts/
 
-Python, stdlib only, no dependencies.
+Python, stdlib only, no dependencies. The reverse-engineering harness each
+client was built against, plus firmware tooling.
 
 | Script | Purpose |
 | --- | --- |
-| `discover.py` | Sweeps every PR60X `get*` method. Read-only. |
-| `collect.py` | Re-collects specific methods with gentle pacing after configd has been upset. |
+| `discover.py` / `collect.py` | Sweep / re-collect PR60X `get*` methods (read-only, gently paced). |
 | `roundtrip.py` / `roundtrip2.py` | Confirm the PR60X write shapes. Mutating — snapshot first, clean up, verify. |
 | `set_dhcp_dns.py` | Sets DHCP option 6, with `--show` and `--restore`. |
-| `schemagen.py` | Reduces a discovery dump to the value-free `schema.json`. |
+| `schemagen.py` / `coverage.py` | Reduce a discovery dump to the value-free `schema.json`; report API coverage. |
 | `xs508tm_discover.py` | Sweeps every XS508TM route safe to GET; refuses parameterised or state-changing ones. |
-| `tftp_serve.py` | Read-only stdlib TFTP server. Exists because the MS510TXUP's HTTP firmware upload produces an unbootable image and TFTP does not. |
-| `ms510txup_firmware.py` | Drives an MS510TXUP upgrade over TFTP, writing the inactive image slot. |
-| `ms510txup_login.py` | Python reference for the MS510TXUP: URL signing, password obfuscation, the login handshake and the RSA CSRF header. Faster to iterate against than the Go client. Stdlib only - PKCS#1 v1.5 is implemented inline. |
-| `*_routes.json`, `*_endpoints.json`, `wax630e_api.json` | The recovered API surfaces. |
+| `ms510txup_login.py` | Python reference for the MS510TXUP: URL signing, password obfuscation, the login handshake and the RSA CSRF header. PKCS#1 v1.5 implemented inline. |
+| `wax630e_client.py` | Query-by-example reference client for the AP. |
+| `tftp_serve.py` | Read-only stdlib TFTP server — the MS510TXUP's HTTP firmware upload produces an unbootable image; TFTP does not. |
+| `*_firmware.py` | Drive firmware upgrades per device (MS510TXUP over TFTP; others per device). |
+| `ms510txup_poe_reset.py` | Power-cycle a PoE port. |
+| `*_routes.json`, `*_endpoints.json`, `wax630e_api.json`, `schema.json` | The recovered API surfaces (value-free). |
 
-Discovery dumps and device running-configs are **gitignored**: they carry LAN
-inventory, WAN addresses and admin password hashes. `schema.json` is the
-value-free equivalent that is safe to commit.
+Discovery dumps and device running-configs are **gitignored** (`.gitignore`):
+they carry LAN inventory, WAN addresses and admin password hashes. `schema.json`
+and the `*_routes/endpoints.json` files are the value-free equivalents that are
+safe to commit.
 
 ## Known gaps
 
-- **The MS510TXUP emits malformed RFC5424 and nothing can parse it.** This is
-  the one genuinely unsolved problem, and it is a firmware defect. On the wire:
-
-  ```
-  <15>1 2026-09-01T14:50:46.181-07:00: %192.168.1.2-1 SYSTEM-7-START_CONF_WRITE ...
-                                     ^ stray colon        ^ stray %
-  ```
-
-  RFC5424 wants `TIMESTAMP SP HOSTNAME`; this is `TIMESTAMP: %HOSTNAME`, so a
-  strict parser fails at column 36. Alloy reports `parsing error [col 36]` and
-  drops every message. The device has no format option - `logging` is not a
-  command in its CLI at all - so the fix has to be collector-side.
-  `loki.source.syslog` has `syslog_format = "raw"`, which disables parsing and
-  hands the line to `loki.process`, but it is experimental and needs Alloy's
-  `stability.level` set to `experimental` process-wide.
-
-  Note the counter lies: `log_remote.msgReceived` stays 0 while the switch is
-  in fact transmitting. Trust `loki_source_syslog_parsing_errors_total` on the
-  collector, or capture the datagrams, over anything this firmware reports
-  about itself.
-- **MS510TXUP DNS (`sys_dnsConf`) is not modelled yet** - still 8.8.8.8.
-- **WAX630E reads beyond the transcribed templates.** Auth and the syslog and
-  device-info shapes are verified live; the station and radio templates in the
-  bundle are fragments of larger payloads and still return `err_code 28`.
+- **The MS510TXUP emits malformed RFC5424 syslog and strict parsers reject it.**
+  It writes `TIMESTAMP: %HOSTNAME` where RFC5424 wants `TIMESTAMP SP HOSTNAME`,
+  so Alloy fails at column 36 and drops every message. The device has no format
+  option (`logging` is not a CLI command), so the fix is collector-side:
+  `loki.source.syslog` with `syslog_format = "raw"` (experimental). The device's
+  own `log_remote.msgReceived` counter lies (stays 0 while transmitting); trust
+  the collector's `loki_source_syslog_parsing_errors_total`.
+- **WAX630E station/radio reads beyond the transcribed templates** still return
+  `err_code 28` — the bundle templates are fragments of larger payloads, so the
+  exporter deliberately omits connected-station counts rather than silently
+  reporting nothing.
 - **The XS508TM management plane wedges and stays wedged** — lighttpd answering
-  502 in ~10ms because the CGI backend behind it died. Only a management-plane
-  restart clears it; retrying cannot. The data plane is unaffected throughout,
-  so it is not an outage and does not justify an unplanned reboot.
-- **MS510TXUP firmware: use TFTP, never the HTTP upload CGI.** Both transfer
-  the image and both report success; only TFTP produces one the switch will
-  boot. Via `cgi-bin/httpupload.cgi` the image lands, its metadata parses
-  (`show bootvar` shows the right version and build date) and the boot
-  selection moves - then the loader boots the old image and silently clears
-  the selection. Reproduced with two images including a same-series one, and
-  with the multipart encoder verified byte-for-byte against a local server, so
-  the transfer is not the problem: the commit never happens. Via
-  `file_tftp_download` it just works - verified 1.0.5.15 -> 1.0.5.23 -> 1.1.1.9
-  on a live switch. `scripts/tftp_serve.py` is a stdlib read-only TFTP server
-  for exactly this.
-- **The MS510TXUP upgrade resets some configuration.** Going to 1.1.1.9
-  dropped the remote syslog host and replaced the SNTP server with three vendor
-  defaults; DNS and the clock source survived. Re-run Terraform after any
-  upgrade rather than assuming - it detected both immediately.
-- `netgear_pr60x_static_route` field names are unverified.
-- PR60X `getAttachedDevices` returns `-32603`; `getCerts` / `getCertDetails`
-  return `-32602`. All three take parameters not yet worked out.
+  502 because the CGI backend died. Only a management-plane restart clears it;
+  the data plane is unaffected, so it is not an outage.
+- **MS510TXUP firmware: use TFTP, never the HTTP upload CGI.** Both transfer the
+  image and report success; only TFTP produces one the switch will boot. Via the
+  CGI the boot selection moves and then the loader silently reverts.
+- **The MS510TXUP upgrade resets some configuration** (drops the remote syslog
+  host, replaces SNTP with vendor defaults). Re-run Terraform after any upgrade.
+- `netgear_pr60x_static_route` field names are unverified; PR60X
+  `getAttachedDevices` / `getCerts` / `getCertDetails` take parameters not yet
+  worked out.
 - Jumbo frames are available (`jumbo-frame <1522-10000>` on the MS510TXUP), but
-  MTU has to be changed end-to-end across switch, nodes and CNI together or it
-  produces blackholes that affect only large packets.
+  MTU must be changed end-to-end across switch, nodes and CNI together or it
+  blackholes only large packets.
+
+## docs/
+
+Protocol and recovery notes captured during reverse engineering:
+`api-coverage.md`, `ms510txup-web-ui.md`, `wax630e-http-api.md`,
+`xs508tm-recovery.md`, `recommendations.md`.
+</content>
+</invoke>
