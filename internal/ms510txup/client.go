@@ -74,11 +74,54 @@ type Client struct {
 
 	httpClient *http.Client
 
+	// releasePerCall makes every public Get/Set hand its session back before
+	// returning, at the cost of a fresh multi-step login on the next call. See
+	// SetReleasePerCall for why the two callers of this package want opposite
+	// defaults.
+	releasePerCall bool
+
 	mu       sync.Mutex
 	tabid    string
 	pub      *rsa.PublicKey
 	xsrf     string
 	lastCall time.Time
+}
+
+// SetReleasePerCall controls whether the client holds its session open between
+// calls (the default, false) or logs out after every Get/Set (true).
+//
+// THE TWO CALLERS WANT OPPOSITE THINGS, and this is the switch between them.
+//
+//   - The exporter is a long-lived process that polls on an interval and shuts
+//     down cleanly, so it keeps ONE session and reuses it (false). Re-running
+//     this switch's multi-step login+RSA handshake every poll would be pure
+//     waste, and the single held session is released by Logout on shutdown.
+//
+//   - The Terraform provider is a short-lived process that Terraform KILLS
+//     rather than shutting down, so a session held past the call that opened it
+//     is leaked for good. This switch has only four session slots and frees
+//     them on logout or a ~15-minute idle timeout, never because the client
+//     went away - so a handful of provider runs inside that window fill the
+//     table and every login is then refused (errCode 481), which is exactly the
+//     lockout that motivated this. With releasePerCall the provider leaves no
+//     session behind, so Terraform's parallelism and run frequency stop
+//     mattering to the session limit. The per-device mutex already serialises
+//     the calls, so at most one login is ever in flight regardless.
+//
+// It is safe to call once, before the client is used.
+func (c *Client) SetReleasePerCall(v bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.releasePerCall = v
+}
+
+// releaseLocked hands the session back when the client is in per-call mode.
+// Callers hold c.mu. It is a no-op in the default reuse mode.
+func (c *Client) releaseLocked() {
+	if !c.releasePerCall {
+		return
+	}
+	_ = c.logoutLocked()
 }
 
 // minInterval paces requests. This firmware is older and slower than the
@@ -372,6 +415,7 @@ type envelope struct {
 func (c *Client) Get(cmd string, out any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	defer c.releaseLocked()
 	return c.getLocked(cmd, out)
 }
 
@@ -433,6 +477,7 @@ func (c *Client) refreshXsrf() error {
 func (c *Client) Set(cmd string, fields []Field) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	defer c.releaseLocked()
 	if err := c.ensure(); err != nil {
 		return err
 	}
@@ -802,6 +847,11 @@ func (c *Client) GetSysInfo() (SysInfo, error) {
 func (c *Client) Logout() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.logoutLocked()
+}
+
+// logoutLocked releases the session. Callers hold c.mu.
+func (c *Client) logoutLocked() error {
 	if c.tabid == "" {
 		return nil
 	}
