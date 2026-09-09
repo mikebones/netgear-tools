@@ -31,7 +31,7 @@ import os
 import ssl
 import urllib.request
 
-HOST = os.environ.get("WAX630_HOST", "https://192.168.1.136")
+HOST = os.environ.get("WAX630_HOST", "https://192.0.2.136")
 
 # Query-by-example templates lifted from the SPA bundle. These are the exact
 # shapes the firmware accepts; an invented one is rejected.

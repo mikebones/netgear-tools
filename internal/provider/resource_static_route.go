@@ -64,7 +64,7 @@ func (r *staticRouteResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"destination": schema.StringAttribute{
 				Required:    true,
-				Description: "Destination network address, e.g. 10.44.0.0.",
+				Description: "Destination network address, e.g. 192.0.2.0.",
 			},
 			"netmask": schema.StringAttribute{
 				Required:    true,

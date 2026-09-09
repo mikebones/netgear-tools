@@ -37,7 +37,7 @@ import ssl
 import time
 import urllib.request
 
-HOST = os.environ.get("PR60X_ENDPOINT", "https://192.168.1.1")
+HOST = os.environ.get("PR60X_ENDPOINT", "https://192.0.2.1")
 
 _ctx = ssl._create_unverified_context()
 _jar = http.cookiejar.CookieJar()

@@ -20,7 +20,7 @@ they renew.
 
 Usage:
     PR60X_PASSWORD=... python set_dhcp_dns.py --vlan 1 --show
-    PR60X_PASSWORD=... python set_dhcp_dns.py --vlan 1 --dns 192.168.1.64
+    PR60X_PASSWORD=... python set_dhcp_dns.py --vlan 1 --dns 192.0.2.64
     PR60X_PASSWORD=... python set_dhcp_dns.py --restore vlan.snapshot.json
 """
 import argparse

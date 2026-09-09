@@ -20,7 +20,7 @@ import sys
 import urllib.error
 import urllib.request
 
-HOST = os.environ.get("PR60X_HOST", "https://192.168.1.1")
+HOST = os.environ.get("PR60X_HOST", "https://192.0.2.1")
 CTX = ssl._create_unverified_context()
 
 SKIP = {

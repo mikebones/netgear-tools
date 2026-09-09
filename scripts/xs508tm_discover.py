@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 import http.cookiejar
 
-HOST = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("XS508TM_HOST", "http://192.168.1.223")
+HOST = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("XS508TM_HOST", "http://192.0.2.223")
 ROUTES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xs508tm_routes.json")
 
 # Anything matching these is never requested, even via GET. A switch is not a

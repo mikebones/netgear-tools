@@ -1,7 +1,7 @@
 {
   "_meta": {
     "model": "WAX630E",
-    "address": "192.168.1.136",
+    "address": "192.0.2.136",
     "verified": [
       "POST /socketCommunication is the single API endpoint, same architecture as the PR60X router",
       "sets an lhttpdsid session cookie - shared with the PR60X and both switches",

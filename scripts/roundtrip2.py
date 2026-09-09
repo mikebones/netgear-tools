@@ -18,7 +18,7 @@ from discover import PR60X
 
 PROBE_SVC = "TF-PROBE-DELETEME"
 PROBE_PORT = 65000
-PROBE_DEST = "192.168.1.254"  # unused; rule stays disabled regardless
+PROBE_DEST = "192.0.2.254"  # unused; rule stays disabled regardless
 
 PW = os.environ.get("PR60X_PASSWORD")
 if not PW:

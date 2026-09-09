@@ -444,7 +444,7 @@ func (c *Client) DeleteServiceProfile(id int64) error {
 // Shape confirmed from live getPortForwardingRules output:
 //
 //	{"id":1,"enabled":1,"externalService":"WG","internalService":"WG",
-//	 "destIpAddress":"192.168.1.70","srcIpAddress":"Any",
+//	 "destIpAddress":"192.0.2.70","srcIpAddress":"Any",
 //	 "wanInputInterface":"wan","wanIpAddress":""}
 //
 // externalService/internalService are service-profile NAMES. They can differ,
@@ -1016,8 +1016,8 @@ func (c *Client) GetSecureDNSSettings() (*SecureDNSSettings, error) {
 //  3. THE ADDRESS MUST ALREADY HOLD A LEASE. Reserving an address the router
 //     has never leased is rejected - and rejected SILENTLY: the reply carries
 //     no error, result is simply null and the list is unchanged. Verified
-//     twice, with an out-of-pool address (192.168.1.99) and with a free
-//     in-pool one (192.168.1.240); both were dropped, while the same call
+//     twice, with an out-of-pool address (192.0.2.99) and with a free
+//     in-pool one (192.0.2.240); both were dropped, while the same call
 //     against five currently-leased addresses returned result 0 and applied.
 //     This mirrors the UI, where reservations are made by selecting rows in
 //     the DHCP lease table rather than by typing an address.

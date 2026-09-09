@@ -93,10 +93,10 @@ func (p *NetgearProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 			"account, Insight subscription or cloud dependency. Each device family is configured in its own " +
 			"attribute and has its own resource prefix (netgear_pr60x_*, netgear_xs508tm_*).",
 		Attributes: map[string]schema.Attribute{
-			"pr60x":     deviceAttrs("the PR60X router", "https://192.168.1.1", "PR60X"),
-			"xs508tm":   deviceAttrs("an XS-series smart switch", "http://192.168.1.3", "XS508TM"),
-			"wax630e":   deviceAttrs("a WAX6-series access point", "https://192.168.1.5", "WAX630E"),
-			"ms510txup": deviceAttrs("an MS510TXUP smart switch", "http://192.168.1.2", "MS510TXUP"),
+			"pr60x":     deviceAttrs("the PR60X router", "https://192.0.2.1", "PR60X"),
+			"xs508tm":   deviceAttrs("an XS-series smart switch", "http://192.0.2.3", "XS508TM"),
+			"wax630e":   deviceAttrs("a WAX6-series access point", "https://192.0.2.5", "WAX630E"),
+			"ms510txup": deviceAttrs("an MS510TXUP smart switch", "http://192.0.2.2", "MS510TXUP"),
 		},
 	}
 }
@@ -127,7 +127,7 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 	// A device counts as configured when a password can be found for it,
 	// whether from the block or the environment. Absence means "not managed
 	// here" rather than an error.
-	if endpoint, username, password, insecure := resolve(data.PR60X, "PR60X", "https://192.168.1.1"); password != "" {
+	if endpoint, username, password, insecure := resolve(data.PR60X, "PR60X", "https://192.0.2.1"); password != "" {
 		client, err := pr60x.NewClient(endpoint, username, password, insecure)
 		if err != nil {
 			resp.Diagnostics.AddError("Could not create PR60X client", err.Error())
@@ -137,7 +137,7 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 		registerCleanup(client.Logout)
 	}
 
-	if endpoint, username, password, insecure := resolve(data.XS508TM, "XS508TM", "http://192.168.1.3"); password != "" {
+	if endpoint, username, password, insecure := resolve(data.XS508TM, "XS508TM", "http://192.0.2.3"); password != "" {
 		client, err := xs508tm.NewClient(endpoint, username, password, insecure)
 		if err != nil {
 			resp.Diagnostics.AddError("Could not create XS508TM client", err.Error())
@@ -147,7 +147,7 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 		registerCleanup(client.Logout)
 	}
 
-	if endpoint, username, password, insecure := resolve(data.WAX630E, "WAX630E", "https://192.168.1.136"); password != "" {
+	if endpoint, username, password, insecure := resolve(data.WAX630E, "WAX630E", "https://192.0.2.5"); password != "" {
 		client, err := wax630e.NewClient(endpoint, username, password, insecure)
 		if err != nil {
 			resp.Diagnostics.AddError("Could not create WAX630E client", err.Error())
@@ -159,7 +159,7 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	// The MS510TXUP has a single admin password and no username concept, so
 	// the username from resolve() is ignored here.
-	if endpoint, _, password, insecure := resolve(data.MS510TXUP, "MS510TXUP", "http://192.168.1.2"); password != "" {
+	if endpoint, _, password, insecure := resolve(data.MS510TXUP, "MS510TXUP", "http://192.0.2.2"); password != "" {
 		client, err := ms510txup.NewClient(endpoint, password, insecure)
 		if err != nil {
 			resp.Diagnostics.AddError("Could not create MS510TXUP client", err.Error())

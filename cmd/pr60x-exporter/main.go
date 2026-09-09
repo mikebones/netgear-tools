@@ -316,7 +316,7 @@ func (p *poller) poll() {
 func main() {
 	var (
 		listen   = flag.String("listen", ":9812", "Address to serve /metrics on.")
-		endpoint = flag.String("endpoint", envOr("PR60X_ENDPOINT", "https://192.168.1.1"), "Router base URL.")
+		endpoint = flag.String("endpoint", envOr("PR60X_ENDPOINT", "https://192.0.2.1"), "Router base URL.")
 		username = flag.String("username", envOr("PR60X_USERNAME", "admin"), "Router admin username.")
 		interval = flag.Duration("interval", 60*time.Second,
 			"How often to poll the router. Do not set this aggressively - the device's config daemon degrades under rapid RPC load.")

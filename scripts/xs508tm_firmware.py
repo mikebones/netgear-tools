@@ -46,7 +46,7 @@ memory".
 Usage:
 
     XS508TM_PASSWORD=... python xs508tm_firmware.py \\
-        --host 192.168.1.223 --url http://192.168.1.140:8800/S3600-v7.8.11.21.stk
+        --host 192.0.2.223 --url http://192.0.2.140:8800/S3600-v7.8.11.21.stk
 
     ... --activate      also set next-boot and reload
 """

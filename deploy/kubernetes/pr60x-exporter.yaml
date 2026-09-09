@@ -95,7 +95,7 @@ spec:
           image: ghcr.io/mikebones/pr60x-exporter:main
           args:
             - --listen=:9812
-            - --endpoint=https://192.168.1.1
+            - --endpoint=https://192.0.2.1
             # Polling interval. The router is a small appliance - 60s is
             # plenty for temperature, link state and byte counters, and the
             # binary refuses anything under 15s.

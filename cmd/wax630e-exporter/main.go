@@ -112,7 +112,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			"query-by-example template. -1 means \"the AP did not answer\", NOT \"standalone\" - "+
 			"reporting 0 there would be inventing a reassuring answer the device never gave."),
 		dhcpClient: f.gauge("dhcp_client_enabled", "1 if the AP takes its management address by DHCP. "+
-			"Should be 0 - it was moved to a static 192.168.1.5 precisely so it could not land inside "+
+			"Should be 0 - it was moved to a static address outside the router's DHCP pool precisely so it could not land inside "+
 			"the router's pool again."),
 		mgmtVLAN: f.gauge("management_vlan_id", "Management VLAN the AP answers on."),
 		syslogEnabled: f.gauge("syslog_enabled", "1 if remote syslog is enabled. This exists because the "+
@@ -325,7 +325,7 @@ func envOr(k, def string) string {
 func main() {
 	var (
 		listen   = flag.String("listen", ":9815", "Address to serve /metrics on.")
-		endpoint = flag.String("endpoint", envOr("WAX630E_ENDPOINT", "https://192.168.1.5"), "AP base URL.")
+		endpoint = flag.String("endpoint", envOr("WAX630E_ENDPOINT", "https://192.0.2.5"), "AP base URL.")
 		username = flag.String("username", envOr("WAX630E_USERNAME", "admin"), "AP username.")
 		interval = flag.Duration("interval", 120*time.Second, "Poll interval. Not below 30s.")
 		insecure = flag.Bool("insecure", true, "Skip TLS verification (the AP serves a self-signed cert).")

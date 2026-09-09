@@ -53,7 +53,7 @@ import time
 import urllib.parse
 import urllib.request
 
-HOST = os.environ.get("MS510_HOST", "http://192.168.1.2")
+HOST = os.environ.get("MS510_HOST", "http://192.0.2.2")
 POSSIBLE = string.ascii_uppercase + string.ascii_lowercase + string.digits
 
 

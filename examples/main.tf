@@ -6,7 +6,7 @@ terraform {
   }
 }
 
-# Password comes from PR60X_PASSWORD. Endpoint defaults to https://192.168.1.1
+# Password comes from PR60X_PASSWORD. Endpoint defaults to https://192.0.2.1
 # and username to admin, so this block can usually stay empty.
 provider "netgear" {}
 
@@ -64,6 +64,6 @@ output "internet_exposed" {
 # resource "netgear_pr60x_port_forwarding_rule" "wireguard_kube" {
 #   external_service = netgear_pr60x_service_profile.wireguard_kube.name
 #   internal_service = netgear_pr60x_service_profile.wireguard_kube.name
-#   dest_ip_address  = "192.168.1.72"
+#   dest_ip_address  = "192.0.2.72"
 #   enabled          = true
 # }

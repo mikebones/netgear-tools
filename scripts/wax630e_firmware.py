@@ -62,7 +62,7 @@ STATUS = {
 def main():
     ap_args = argparse.ArgumentParser()
     ap_args.add_argument("--file", required=True, help="firmware .tar")
-    ap_args.add_argument("--host", default=os.environ.get("WAX630_HOST", "https://192.168.1.136"))
+    ap_args.add_argument("--host", default=os.environ.get("WAX630_HOST", "https://192.0.2.136"))
     args = ap_args.parse_args()
 
     if not args.file.endswith(".tar"):

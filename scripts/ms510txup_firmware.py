@@ -37,7 +37,7 @@ Usage:
 
     # terminal 2
     MS510_PASSWORD=... python ms510txup_firmware.py \\
-        --server 192.168.1.140 --file MS510TXM_TXUP_V1.1.1.9.bix --activate
+        --server 192.0.2.140 --file MS510TXM_TXUP_V1.1.1.9.bix --activate
 
 --activate selects the written slot for the next boot. It does NOT reboot:
 rebooting interrupts forwarding for everything attached, and on this switch
