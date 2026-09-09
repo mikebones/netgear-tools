@@ -92,6 +92,10 @@ type sshMetrics struct {
 	sfpPresent *prometheus.GaugeVec
 	sfpDDM     *prometheus.GaugeVec
 	sfpInfo    *prometheus.GaugeVec
+
+	// /proc/vlan - VLAN membership and per-port PVID.
+	vlanMember *prometheus.GaugeVec
+	portPVID   *prometheus.GaugeVec
 }
 
 func newSSHMetrics(reg prometheus.Registerer) *sshMetrics {
@@ -125,6 +129,15 @@ func newSSHMetrics(reg prometheus.Registerer) *sshMetrics {
 			"The current SFP-H10GB-CU direct-attach copper cables do NOT, so live temp/power is unavailable "+
 			"until a real optic is fitted - this flag says whether that data would exist.", "port"),
 		sfpInfo: f.vec("proc_sfp_info", "Always 1. SFP vendor and part number decoded from the raw EEPROM in /proc/optical.", "port", "vendor", "part_number"),
+
+		vlanMember: f.vec("proc_vlan_port_membership", "How a front-panel port belongs to a VLAN, from /proc/vlan: "+
+			"1 untagged, 2 tagged (the same encoding the web API uses). A port absent from a VLAN has no series "+
+			"for it. Sourced from the root /proc read, so it costs no web session - this is the storage VLAN's "+
+			"membership (VLAN 20 tagged on the node ports and the SFP+ uplink) made visible without the CGI.",
+			"vlan", "port"),
+		portPVID: f.vec("proc_port_pvid", "The port's PVID from /proc/vlan - the VLAN untagged ingress traffic "+
+			"lands on. Exported so a PVID drifting off 1 (which silently reclassifies a node's untagged traffic) "+
+			"is visible.", "port"),
 	}
 }
 
@@ -163,6 +176,7 @@ func (p *sshPoller) poll() {
 	p.parsePoE(sec["POE"])
 	p.parseLinkdown(sec["LINKDOWN"])
 	p.parseOptical(sec["OPTICAL"])
+	p.parseVLAN(sec["VLAN"])
 	p.m.up.Set(1)
 }
 
@@ -171,6 +185,7 @@ func (p *sshPoller) poll() {
 const sshBatch = `echo @@POE; cat /proc/poe 2>/dev/null; ` +
 	`echo @@LINKDOWN; cat /proc/linkdown 2>/dev/null; ` +
 	`echo @@OPTICAL; cat /proc/optical 2>/dev/null; ` +
+	`echo @@VLAN; cat /proc/vlan 2>/dev/null; ` +
 	`echo @@DONE`
 
 // collect dials, authenticates, runs the batch over a single session and
@@ -534,6 +549,112 @@ func parseHexDumpLine(s string) (int, []byte, bool) {
 		return 0, nil, false
 	}
 	return off, out, true
+}
+
+// --- /proc/vlan -------------------------------------------------------------
+//
+// Two blocks. First a membership table, one row per VLAN:
+//
+//	vid(group id): utagged member| tagged member
+//	1(1): mg1-4,xmg5-8,xg9-10 |
+//	20(1):  | mg1-4,xg10
+//
+// then a PVID block:
+//
+//	PVID
+//	MultiGigabitEthernet1: 1
+//	...
+//
+// The port names carry the front-panel number as their trailing digits
+// (mg1..mg4 = 1..4, xmg5..xmg8 = 5..8, xg9..xg10 = 9..10), and the membership
+// lists use those same numbers, so a range like "xmg5-8" expands to ports 5-8.
+func (p *sshPoller) parseVLAN(s string) {
+	if s == "" {
+		return
+	}
+	p.m.vlanMember.Reset()
+	p.m.portPVID.Reset()
+
+	inPVID := false
+	for _, raw := range strings.Split(s, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "PVID") {
+			inPVID = true
+			continue
+		}
+		if inPVID {
+			name, val, ok := strings.Cut(line, ":")
+			if !ok {
+				continue
+			}
+			port := portNumFromName(strings.TrimSpace(name))
+			v, err := strconv.Atoi(strings.TrimSpace(val))
+			if err != nil || port == "" {
+				continue
+			}
+			p.m.portPVID.WithLabelValues(port).Set(float64(v))
+			continue
+		}
+
+		head, members, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		// "1(1)" -> "1"; the header row's "vid(group id)" fails the Atoi and is
+		// skipped without a special case.
+		if i := strings.Index(head, "("); i >= 0 {
+			head = head[:i]
+		}
+		vid := strings.TrimSpace(head)
+		if _, err := strconv.Atoi(vid); err != nil {
+			continue
+		}
+		untag, tag, _ := strings.Cut(members, "|")
+		// 1 = untagged, 2 = tagged, matching the web API's own encoding.
+		for _, port := range expandPortList(untag) {
+			p.m.vlanMember.WithLabelValues(vid, port).Set(1)
+		}
+		for _, port := range expandPortList(tag) {
+			p.m.vlanMember.WithLabelValues(vid, port).Set(2)
+		}
+	}
+}
+
+// expandPortList turns a /proc/vlan member list like "mg1-4,xmg5-8,xg10" into
+// the front-panel port numbers it covers. The alphabetic prefix is dropped and
+// each token is either a single number or an inclusive N-M range.
+func expandPortList(s string) []string {
+	var out []string
+	for _, tok := range strings.Split(s, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		// Drop the leading letters (mg / xmg / xg / lag), leaving "1-4", "10".
+		i := 0
+		for i < len(tok) && (tok[i] < '0' || tok[i] > '9') {
+			i++
+		}
+		nums := tok[i:]
+		if lo, hi, ok := strings.Cut(nums, "-"); ok {
+			a, err1 := strconv.Atoi(strings.TrimSpace(lo))
+			b, err2 := strconv.Atoi(strings.TrimSpace(hi))
+			if err1 != nil || err2 != nil || a > b {
+				continue
+			}
+			for n := a; n <= b; n++ {
+				out = append(out, strconv.Itoa(n))
+			}
+			continue
+		}
+		if _, err := strconv.Atoi(nums); err == nil {
+			out = append(out, nums)
+		}
+	}
+	return out
 }
 
 // --- shared helpers ---------------------------------------------------------

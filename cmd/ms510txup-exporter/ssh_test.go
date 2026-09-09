@@ -71,6 +71,15 @@ Port xg9:
 080: 20 20 20 20 30 30 30 30    30 30 20 20 00 00 00 2a            0000 00  ...*
 096: 80 00 11 ba 10 2c 2a 78    0e fc 5a 28 a6 73 34 23        .....,*x ..Z(.s4#
 112: 9d 5c 9d 3f cc 00 00 00    00 00 f9 a8 49 80 5e 12        .\.?.... ....I.^.
+@@VLAN
+vid(group id): utagged member| tagged member
+1(1): mg1-4,xmg5-8,xg9-10 |
+20(1):  | mg1-4,xg10
+4086(0):  |
+PVID
+MultiGigabitEthernet1: 1
+MultiGigabitEthernet2: 20
+XGigabitEthernet10: 1
 @@DONE
 `
 
@@ -118,6 +127,7 @@ func TestParseProc(t *testing.T) {
 	p.parsePoE(sec["POE"])
 	p.parseLinkdown(sec["LINKDOWN"])
 	p.parseOptical(sec["OPTICAL"])
+	p.parseVLAN(sec["VLAN"])
 
 	mfs := gather(t, reg)
 
@@ -164,6 +174,51 @@ func TestParseProc(t *testing.T) {
 	}
 	if _, ok := val(mfs["ms510txup_proc_sfp_info"], map[string]string{"port": "9", "vendor": "OEM", "part_number": "SFP-H10GB-CU0.5M"}); !ok {
 		t.Errorf("sfp port9 info (OEM / SFP-H10GB-CU0.5M) not found")
+	}
+
+	// --- vlan: VLAN 1 untagged on all ports, VLAN 20 tagged on 1-4 and 10 ---
+	if v, ok := val(mfs["ms510txup_proc_vlan_port_membership"], map[string]string{"vlan": "1", "port": "7"}); !ok || v != 1 {
+		t.Errorf("vlan1 port7 membership = %v, %v; want 1 (untagged)", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_vlan_port_membership"], map[string]string{"vlan": "20", "port": "4"}); !ok || v != 2 {
+		t.Errorf("vlan20 port4 membership = %v, %v; want 2 (tagged)", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_vlan_port_membership"], map[string]string{"vlan": "20", "port": "10"}); !ok || v != 2 {
+		t.Errorf("vlan20 port10 membership = %v, %v; want 2 (tagged)", v, ok)
+	}
+	// Port 5 is not in VLAN 20, so there must be no series for it.
+	if _, ok := val(mfs["ms510txup_proc_vlan_port_membership"], map[string]string{"vlan": "20", "port": "5"}); ok {
+		t.Errorf("vlan20 should have no series for port5")
+	}
+	// PVID: port 2 was set to 20 in the fixture, port 1 stays on 1.
+	if v, ok := val(mfs["ms510txup_proc_port_pvid"], map[string]string{"port": "2"}); !ok || v != 20 {
+		t.Errorf("port2 pvid = %v, %v; want 20", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_port_pvid"], map[string]string{"port": "1"}); !ok || v != 1 {
+		t.Errorf("port1 pvid = %v, %v; want 1", v, ok)
+	}
+}
+
+func TestExpandPortList(t *testing.T) {
+	cases := map[string][]string{
+		"mg1-4,xmg5-8,xg9-10": {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"},
+		" mg1-4,xg10":         {"1", "2", "3", "4", "10"},
+		"":                    nil,
+		"  ":                  nil,
+		"xg10":                {"10"},
+	}
+	for in, want := range cases {
+		got := expandPortList(in)
+		if len(got) != len(want) {
+			t.Errorf("expandPortList(%q) = %v; want %v", in, got, want)
+			continue
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("expandPortList(%q) = %v; want %v", in, got, want)
+				break
+			}
+		}
 	}
 }
 
