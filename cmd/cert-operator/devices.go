@@ -66,29 +66,63 @@ func buildDevices() ([]device, error) {
 	return out, nil
 }
 
-// configureSw2 wires the XS508TM: fully headless REST upload. Enabled whenever
-// SW2_ENDPOINT is set. Endpoint (an IP) comes from the environment, never baked
-// in; the admin password is read from a mounted secret.
+// configureSw2 wires the XS508TM. PRIMARY is the root telnet install
+// (SW2_TELNET_ADDR, :2323 on the modified firmware) - no admin web session, so
+// no session-limit lockout. FALLBACK is the legacy headless REST upload
+// (SW2_ENDPOINT), used automatically only if telnet root is unreachable.
+// Configured when either is set; endpoints (LAN IPs) come from the environment,
+// credentials from mounted secrets.
 func configureSw2(spec deviceSpec) (*device, error) {
+	telnetAddr := os.Getenv("SW2_TELNET_ADDR")
 	endpoint := os.Getenv("SW2_ENDPOINT")
-	if endpoint == "" {
+	if telnetAddr == "" && endpoint == "" {
 		return nil, nil
 	}
-	password := readMountedSecret("SW2_PASSWORD")
-	if password == "" {
-		return nil, fmt.Errorf("SW2_PASSWORD (or SW2_PASSWORD_FILE) is required when SW2_ENDPOINT is set")
+
+	var primary, fallback pushFunc
+	if endpoint != "" {
+		password := readMountedSecret("SW2_PASSWORD")
+		if password == "" {
+			return nil, fmt.Errorf("SW2_PASSWORD (or SW2_PASSWORD_FILE) is required when SW2_ENDPOINT is set")
+		}
+		fallback = pushXS508TM(endpoint, envOr("SW2_USERNAME", "admin"), password, envBool("SW2_INSECURE", true))
+	}
+	if telnetAddr != "" {
+		pw := readMountedSecret("SW2_TELNET_PASSWORD")
+		if pw == "" {
+			return nil, fmt.Errorf("SW2_TELNET_PASSWORD (or SW2_TELNET_PASSWORD_FILE) is required when SW2_TELNET_ADDR is set")
+		}
+		primary = pushXS508TMTelnet(telnetAddr, pw)
+	}
+
+	tlsAddr := os.Getenv("SW2_TLS_ADDR")
+	if tlsAddr == "" {
+		if endpoint != "" {
+			tlsAddr = deriveAddr(endpoint)
+		} else {
+			tlsAddr = net.JoinHostPort(hostOnly(telnetAddr), "443")
+		}
 	}
 	return &device{
 		name:       spec.name,
 		secretName: spec.secretName,
-		tlsAddr:    envOr("SW2_TLS_ADDR", deriveAddr(endpoint)),
-		push: pushXS508TM(
-			endpoint,
-			envOr("SW2_USERNAME", "admin"),
-			password,
-			envBool("SW2_INSECURE", true),
-		),
+		tlsAddr:    tlsAddr,
+		push:       composePush(spec.name, "telnet root", "web REST", primary, fallback),
 	}, nil
+}
+
+// composePush selects the device's push: firstWorking(primary, fallback) when
+// both exist, otherwise whichever single one is configured. One of the two is
+// always non-nil at the call sites here.
+func composePush(device, primaryName, fallbackName string, primary, fallback pushFunc) pushFunc {
+	switch {
+	case primary != nil && fallback != nil:
+		return firstWorking(device, primaryName, fallbackName, primary, fallback)
+	case primary != nil:
+		return primary
+	default:
+		return fallback
+	}
 }
 
 // configureRouter wires the PR60X: root SSH file-write. Enabled whenever
@@ -133,29 +167,53 @@ func configureWap1(spec deviceSpec) (*device, error) {
 	}, nil
 }
 
-// configureSw1 wires the MS510TXUP: fully headless HTTP CGI upload, the same
-// shape as configureSw2. Enabled whenever SW1_ENDPOINT is set (an IP over
-// http://, NOT the CNAME - the CNAME login-loops). The admin password is read
-// from a mounted secret. Left unconfigured (a TODO stub) when SW1_ENDPOINT is
-// absent, so the device still appears in the table but is skipped.
-//
-// This replaces the earlier root-SSH design: sw1 no longer needs root for
-// certs. See pushMS510TXUPHTTP / internal/ms510txup/upload.go.
+// configureSw1 wires the MS510TXUP. PRIMARY is the root dropbear install
+// (SW1_HOST + SW1_SSH_* , user sshd on :2222 of the modified firmware) - and it
+// is the important one: sw1's ADMIN IS LOCKED OUT, so the web CGI upload cannot
+// run, but the SSH path installs the cert regardless, needing no admin session.
+// FALLBACK is the legacy headless HTTP CGI upload (SW1_ENDPOINT, an IP over
+// http://, NOT the CNAME which login-loops), used automatically only if root SSH
+// is unreachable. Left a TODO stub when neither is configured. Credentials come
+// from mounted secrets (the root SSH key; the admin password for the fallback).
 func configureSw1(spec deviceSpec) (*device, error) {
+	host := os.Getenv("SW1_HOST")
 	endpoint := os.Getenv("SW1_ENDPOINT")
-	if endpoint == "" {
+	if host == "" && endpoint == "" {
 		// Listed but inactive: nil push => TODO stub.
 		return &device{name: spec.name, secretName: spec.secretName}, nil
 	}
-	password := readMountedSecret("SW1_PASSWORD")
-	if password == "" {
-		return nil, fmt.Errorf("SW1_PASSWORD (or SW1_PASSWORD_FILE) is required when SW1_ENDPOINT is set")
+
+	var primary, fallback pushFunc
+	if endpoint != "" {
+		password := readMountedSecret("SW1_PASSWORD")
+		if password == "" {
+			return nil, fmt.Errorf("SW1_PASSWORD (or SW1_PASSWORD_FILE) is required when SW1_ENDPOINT is set")
+		}
+		fallback = pushMS510TXUPHTTP(endpoint, password)
+	}
+	if host != "" {
+		// Root login is user sshd (uid 0 on the modified firmware) on :2222; the
+		// manifest sets SW1_SSH_USER/SW1_SSH_PORT explicitly, but default here too.
+		target, err := sshTargetFromEnv("SW1", host, "sshd")
+		if err != nil {
+			return nil, err
+		}
+		primary = pushMS510TXUPSSH(target)
+	}
+
+	tlsAddr := os.Getenv("SW1_TLS_ADDR")
+	if tlsAddr == "" {
+		if endpoint != "" {
+			tlsAddr = deriveAddr(endpoint)
+		} else {
+			tlsAddr = net.JoinHostPort(host, "443")
+		}
 	}
 	return &device{
 		name:       spec.name,
 		secretName: spec.secretName,
-		tlsAddr:    envOr("SW1_TLS_ADDR", deriveAddr(endpoint)),
-		push:       pushMS510TXUPHTTP(endpoint, password),
+		tlsAddr:    tlsAddr,
+		push:       composePush(spec.name, "root SSH", "web HTTP CGI", primary, fallback),
 	}, nil
 }
 

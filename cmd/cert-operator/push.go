@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -13,6 +14,34 @@ import (
 	"netgear-tools/internal/ms510txup"
 	"netgear-tools/internal/xs508tm"
 )
+
+// firstWorking returns a pushFunc that installs via primary and, ONLY if that
+// errors, falls back to fallback. Every device here now has a root path
+// (SSH/telnet) as primary; the ones that also have a legacy web path keep it as
+// automatic backup. SSH is preferred because it needs no admin web/management
+// session, which is what hits the switches' session limits and lockouts (sw1's
+// admin is locked out entirely - its SSH path installs the cert regardless). The
+// web method runs only when root is unreachable (dial/auth failure), so a
+// firmware revert or a downed dropbear degrades to the old behaviour instead of
+// failing outright. primaryName/fallbackName are logged so the operator log
+// records which mechanism actually served the cert.
+func firstWorking(device, primaryName, fallbackName string, primary, fallback pushFunc) pushFunc {
+	return func(ctx context.Context, certPEM, keyPEM []byte) error {
+		if err := primary(ctx, certPEM, keyPEM); err == nil {
+			log.Printf("%s: installed via %s (primary)", device, primaryName)
+			return nil
+		} else if fallback == nil {
+			return fmt.Errorf("%s push failed and no fallback configured: %w", primaryName, err)
+		} else {
+			log.Printf("%s: %s push failed (%v); falling back to %s", device, primaryName, err, fallbackName)
+			if ferr := fallback(ctx, certPEM, keyPEM); ferr != nil {
+				return fmt.Errorf("%s failed (%v) and %s fallback failed: %w", primaryName, err, fallbackName, ferr)
+			}
+			log.Printf("%s: installed via %s (fallback)", device, fallbackName)
+			return nil
+		}
+	}
+}
 
 // servedCert dials addr (host:port), completes a TLS handshake, and returns the
 // leaf certificate the device presents. Verification is skipped on purpose: the
@@ -53,6 +82,19 @@ func pushXS508TM(endpoint, username, password string, insecure bool) pushFunc {
 			return fmt.Errorf("create xs508tm client: %w", err)
 		}
 		return c.UploadCertificate(certPEM, keyPEM)
+	}
+}
+
+// pushXS508TMTelnet installs the cert over the XS508TM's root telnet shell
+// (:2323, modified firmware), the PRIMARY sw2 path. It writes the three on-box
+// cert files and restarts lighttpd without any admin web session - so it does
+// not disable HTTPS, does not consume an admin login, and cannot be locked out.
+// It NEVER touches the Broadcom diag console. See internal/xs508tm/telnet.go for
+// the paths, the base64 transport, and the reload. The root password comes from
+// a mounted secret; addr is host:port.
+func pushXS508TMTelnet(addr, password string) pushFunc {
+	return func(_ context.Context, certPEM, keyPEM []byte) error {
+		return xs508tm.TelnetPushCert(addr, password, certPEM, keyPEM, 45*time.Second)
 	}
 }
 
@@ -154,6 +196,37 @@ func pushPR60X(t sshTarget) pushFunc {
 				{path: "/etc/lighttpd/server.crt", mode: "644", content: certPEM},
 			},
 			apply: "/etc/init.d/lighttpd restart",
+		}.run(ctx)
+	}
+}
+
+// pushMS510TXUPSSH installs the cert over the MS510TXUP's root dropbear shell
+// (:2222, user sshd -> uid 0 on the modified firmware), the PRIMARY sw1 path and
+// the one that matters most: sw1's admin is LOCKED OUT, so the web CGI upload
+// cannot run at all - this path installs the cert without any admin session.
+//
+// lighttpd (1.4.79) serves ssl.pemfile = /mnt/ssh/lighttpd_ssl.pem, a combined
+// file that is the leaf+chain THEN the key (verified on the unit). polld/the web
+// CGI keep the split /mnt/ssh/ssl_cert.pem and ssl_key.pem as the inputs it is
+// rebuilt from, so both are written and the combined regenerated the same way
+// (cat cert then key). lighttpd is NOT supervised (inittab respawns only sh and
+// dropbear), so after validating the new config it is killed and re-spawned by
+// hand - the operator's own channel is dropbear, not lighttpd, so bouncing the
+// web server never severs the push. The final spawn's fds are redirected so the
+// self-daemonising lighttpd does not hold the SSH session open.
+func pushMS510TXUPSSH(t sshTarget) pushFunc {
+	return func(ctx context.Context, certPEM, keyPEM []byte) error {
+		return sshCertPush{
+			target: t,
+			files: []sshFile{
+				{path: "/mnt/ssh/ssl_cert.pem", mode: "644", content: certPEM},
+				{path: "/mnt/ssh/ssl_key.pem", mode: "600", content: keyPEM},
+			},
+			apply: "cat /mnt/ssh/ssl_cert.pem > /mnt/ssh/lighttpd_ssl.pem && " +
+				"cat /mnt/ssh/ssl_key.pem >> /mnt/ssh/lighttpd_ssl.pem && " +
+				"lighttpd -t -f /etc/lighttpd.conf && " +
+				"kill $(pidof lighttpd) 2>/dev/null; sleep 1; " +
+				"lighttpd -f /etc/lighttpd.conf </dev/null >/dev/null 2>&1",
 		}.run(ctx)
 	}
 }
