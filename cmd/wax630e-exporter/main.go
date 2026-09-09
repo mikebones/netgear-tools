@@ -324,45 +324,88 @@ func envOr(k, def string) string {
 
 func main() {
 	var (
-		listen   = flag.String("listen", ":9815", "Address to serve /metrics on.")
-		endpoint = flag.String("endpoint", envOr("WAX630E_ENDPOINT", "https://192.0.2.5"), "AP base URL.")
-		username = flag.String("username", envOr("WAX630E_USERNAME", "admin"), "AP username.")
-		interval = flag.Duration("interval", 120*time.Second, "Poll interval. Not below 30s.")
-		insecure = flag.Bool("insecure", true, "Skip TLS verification (the AP serves a self-signed cert).")
+		listen      = flag.String("listen", ":9815", "Address to serve /metrics on.")
+		sshInterval = flag.Duration("ssh-interval", 60*time.Second, "Root-SSH poll interval (the primary data path). Not below 30s.")
+		endpoint    = flag.String("endpoint", envOr("WAX630E_ENDPOINT", "https://192.0.2.5"), "AP base URL (REST fallback).")
+		username    = flag.String("username", envOr("WAX630E_USERNAME", "admin"), "AP username (REST fallback).")
+		interval    = flag.Duration("interval", 120*time.Second, "REST fallback poll interval. Not below 30s.")
+		insecure    = flag.Bool("insecure", true, "Skip TLS verification (the AP serves a self-signed cert).")
+		restFlag    = flag.Bool("rest", false,
+			"Enable the opt-in REST/web-API collector (or set WAX630E_REST_ENABLE=true). OFF by default. "+
+				"It recovers the config/posture fields not visible over SSH - management VLAN, syslog enable/target, "+
+				"default-gateway-reachable, cloud/Insight-managed and DHCP-client flags. TRADEOFF: it holds a web "+
+				"session on an AP whose small session table locks out the browser once full, and a failed login leaks "+
+				"a slot - which is why SSH is preferred. Requires WAX630E_PASSWORD.")
 	)
 	flag.Parse()
 
-	password := os.Getenv("WAX630E_PASSWORD")
-	if password == "" {
-		log.Fatal("WAX630E_PASSWORD is required")
+	// SSH-FIRST GUARD. SSH is the primary data path.
+	if os.Getenv("WAX630E_SSH_ADDR") == "" {
+		log.Fatal("WAX630E_SSH_ADDR is required: SSH is this exporter's primary data path. " +
+			"Set it to the AP's root shell, host:port, e.g. <ap-host>:22, with WAX630E_SSH_KEY_FILE pointing at the " +
+			"root SSH private key. The REST/web-API collector is an opt-in fallback (WAX630E_REST_ENABLE=true), not a substitute.")
 	}
-	// A HIGHER FLOOR THAN THE SWITCHES, on purpose. This AP has a small
-	// session table and a FAILED login leaks a slot - once it fills, the AP
-	// answers 401 to everyone including the browser. Nothing here changes
-	// faster than two minutes, so there is nothing to buy by polling harder.
-	if *interval < 30*time.Second {
-		log.Printf("interval %s is below the 30s floor; using 30s", *interval)
-		*interval = 30 * time.Second
+	if isFlagSet("rest") {
+		if err := os.Setenv("WAX630E_REST_ENABLE", strconv.FormatBool(*restFlag)); err != nil {
+			log.Fatalf("set WAX630E_REST_ENABLE: %v", err)
+		}
 	}
-
-	client, err := wax630e.NewClient(*endpoint, *username, password, *insecure)
-	if err != nil {
-		log.Fatalf("client: %v", err)
-	}
-	// Hold the session between polls rather than logging in each time, for the
-	// same reason as the floor above: every login cycle is a session slot.
-	client.SetKeepAlive(true)
 
 	reg := prometheus.NewRegistry()
-	p := &poller{c: client, m: newMetrics(reg)}
-	p.poll()
+
+	// --- root-SSH collector: the PRIMARY, default data path ---
+	// The 30s floor matches the AP's delicacy; nothing iw reads moves faster.
+	if *sshInterval < 30*time.Second {
+		log.Printf("ssh interval %s is below the 30s floor; using 30s", *sshInterval)
+		*sshInterval = 30 * time.Second
+	}
+	sshCfg, err := loadSSHConfig(*sshInterval, 15*time.Second)
+	if err != nil {
+		log.Fatalf("ssh collector: %v", err)
+	}
+	sp := &sshPoller{cfg: *sshCfg, m: newSSHMetrics(reg)}
+	log.Printf("root-SSH metrics against %s every %s (SSH primary)", sshCfg.addr, sshCfg.interval)
+	sp.poll() // one synchronous poll so /metrics is populated before the first scrape
+	go sp.run()
+
+	// --- opt-in REST/web-API collector: OFF by default ---
+	if *interval < 30*time.Second {
+		log.Printf("rest interval %s is below the 30s floor; using 30s", *interval)
+		*interval = 30 * time.Second
+	}
+	var restClient *wax630e.Client
+	if envBool("WAX630E_REST_ENABLE") {
+		password := os.Getenv("WAX630E_PASSWORD")
+		if password == "" {
+			log.Fatal("WAX630E_REST_ENABLE=true but WAX630E_PASSWORD is empty")
+		}
+		client, err := wax630e.NewClient(*endpoint, *username, password, *insecure)
+		if err != nil {
+			log.Fatalf("rest client: %v", err)
+		}
+		// Hold the session between polls rather than logging in each time:
+		// every login cycle is a session slot on this AP.
+		client.SetKeepAlive(true)
+		restClient = client
+		p := &poller{c: client, m: newMetrics(reg)}
+		log.Printf("REST/web-API metrics ENABLED against %s every %s - this holds a web session on the AP", *endpoint, *interval)
+		p.poll()
+		go func() {
+			ticker := time.NewTicker(*interval)
+			defer ticker.Stop()
+			for range ticker.C {
+				p.poll()
+			}
+		}()
+	} else {
+		log.Print("REST/web-API collector disabled (SSH-only, zero web sessions). " +
+			"Set WAX630E_REST_ENABLE=true with WAX630E_PASSWORD to enable it.")
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	// Serves a cached snapshot, so /healthz means "the process is up", not
-	// "the AP answered". AP reachability is the wax630e_up METRIC, so it can
-	// be alerted on instead of restarting the pod - which would log in again
-	// and burn another session slot every time.
+	// "the AP answered". AP reachability is the wax630e_ssh_up METRIC.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
@@ -370,31 +413,46 @@ func main() {
 
 	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
-		log.Printf("polling %s every %s; serving metrics on %s", *endpoint, *interval, *listen)
+		log.Printf("serving metrics on %s", *listen)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("serve: %v", err)
 		}
 	}()
 
-	ticker := time.NewTicker(*interval)
-	defer ticker.Stop()
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	for {
-		select {
-		case <-ticker.C:
-			p.poll()
-		case <-stop:
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = srv.Shutdown(ctx)
-			cancel()
-			// Releasing the session matters more here than on the switches:
-			// a leaked slot on this AP eventually locks out the web UI.
-			if err := client.Logout(); err != nil {
-				log.Printf("logout: %v", err)
-			}
-			fmt.Println("shutdown")
-			return
+	<-stop
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_ = srv.Shutdown(ctx)
+	cancel()
+	// Release the REST session on the way out rather than leaking it: a leaked
+	// slot on this AP eventually locks out the web UI. No-op when REST was
+	// never enabled (restClient stays nil).
+	if restClient != nil {
+		if err := restClient.Logout(); err != nil {
+			log.Printf("logout: %v", err)
 		}
 	}
+	fmt.Println("shutdown")
+}
+
+// envBool reads a boolean-ish env var. Empty/unset is false.
+func envBool(k string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// isFlagSet reports whether the named flag was passed on the command line.
+func isFlagSet(name string) bool {
+	set := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
 }

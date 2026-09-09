@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -349,63 +350,104 @@ func trimSpace(s string) string {
 
 func main() {
 	var (
-		listen   = flag.String("listen", ":9813", "Address to serve /metrics on.")
-		endpoint = flag.String("endpoint", envOr("XS508TM_ENDPOINT", "http://192.0.2.3"), "Switch base URL.")
-		username = flag.String("username", envOr("XS508TM_USERNAME", "admin"), "Switch username.")
-		interval = flag.Duration("interval", 60*time.Second, "Poll interval. Not below 15s.")
-		insecure = flag.Bool("insecure", true, "Skip TLS verification.")
-
-		// Management-shell health collector (opt-in via XS508TM_TELNET_ADDR).
-		telnetInterval = flag.Duration("telnet-interval", 60*time.Second, "Management-shell poll interval. Not below 30s.")
+		listen = flag.String("listen", ":9813", "Address to serve /metrics on.")
+		// Root-shell (telnet) /proc health collector - the PRIMARY, least-session path.
+		telnetInterval = flag.Duration("telnet-interval", 60*time.Second, "Management-shell (telnet /proc) poll interval. Not below 30s.")
+		endpoint       = flag.String("endpoint", envOr("XS508TM_ENDPOINT", "http://192.0.2.3"), "Switch base URL (REST fallback).")
+		username       = flag.String("username", envOr("XS508TM_USERNAME", "admin"), "Switch username (REST fallback).")
+		interval       = flag.Duration("interval", 60*time.Second, "REST fallback poll interval. Not below 15s.")
+		insecure       = flag.Bool("insecure", true, "Skip TLS verification.")
+		restFlag       = flag.Bool("rest", false,
+			"Enable the opt-in REST/web-API collector (or set XS508TM_REST_ENABLE=true). OFF by default. "+
+				"It is the ONLY source of the switch/port/vlan/igmp/LLDP stats - none of which are in /proc, and the "+
+				"Broadcom diag console that would carry them is OFF-LIMITS (it watchdog-reboots the switch). TRADEOFF: "+
+				"it holds a WEB SESSION, and on this switch a poll loop against the web login has re-locked the admin "+
+				"account - which is exactly why it is off by default and the telnet /proc health path is primary. The "+
+				"clean way to get switch stats without a web session is a READ-ONLY SNMP community (see the note in "+
+				"main() / the README); until one is enabled, this REST collector is the non-SSH fallback. Requires "+
+				"XS508TM_PASSWORD.")
 	)
 	flag.Parse()
 
-	password := os.Getenv("XS508TM_PASSWORD")
-	if password == "" {
-		log.Fatal("XS508TM_PASSWORD is required")
+	// TELNET-FIRST GUARD. The root-shell /proc health collector is this
+	// exporter's primary, least-session data path (it holds ZERO web sessions).
+	// Without its address there is nothing to poll on the default path, so we
+	// refuse to start rather than come up serving an empty /metrics.
+	//
+	// SNMP ASSESSMENT (why switch stats still come over REST, not SNMP): the
+	// port/vlan/igmp/LLDP counters are not in /proc and the Broadcom diag
+	// console that carries them watchdog-reboots the switch, so the only
+	// session-free way to reach them is a READ-ONLY SNMP community on udp/161.
+	// Enabling that community is a device-side config change (it must be added
+	// and is reversible), and it is intentionally NOT done from this metrics
+	// tooling: it belongs in the switch's managed config, applied deliberately.
+	// Until it exists, xs508 CANNOT fully leave the web session for switch
+	// stats - so the REST collector is kept as the opt-in non-SSH fallback and
+	// this limitation is documented rather than papered over.
+	if os.Getenv("XS508TM_TELNET_ADDR") == "" {
+		log.Fatal("XS508TM_TELNET_ADDR is required: the root-shell /proc health collector is this exporter's " +
+			"primary data path (zero web sessions). Set it to the switch's root telnet shell, host:port, e.g. " +
+			"<switch-host>:2323, with XS508TM_TELNET_PASSWORD. The REST/web-API collector (switch/port/vlan/igmp/LLDP " +
+			"stats) is an opt-in fallback (XS508TM_REST_ENABLE=true), not a substitute.")
 	}
-	if *interval < 15*time.Second {
-		log.Fatalf("interval %s is too aggressive for a switch management plane; use 15s or more", *interval)
-	}
-
-	client, err := xs508tm.NewClient(*endpoint, *username, password, *insecure)
-	if err != nil {
-		log.Fatalf("create client: %v", err)
+	if isFlagSet("rest") {
+		if err := os.Setenv("XS508TM_REST_ENABLE", strconv.FormatBool(*restFlag)); err != nil {
+			log.Fatalf("set XS508TM_REST_ENABLE: %v", err)
+		}
 	}
 
 	reg := prometheus.NewRegistry()
-	p := &poller{client: client, m: newMetrics(reg)}
 
-	go func() {
+	// --- telnet /proc health collector: the PRIMARY, default data path ---
+	// Reads ONLY /proc + df over the root shell; never the Broadcom diag
+	// console. See telnet.go for the safety note.
+	tp := &telnetPoller{
+		cfg: telnetConfig{
+			addr:     os.Getenv("XS508TM_TELNET_ADDR"),
+			username: envOr("XS508TM_TELNET_USER", "root"),
+			password: os.Getenv("XS508TM_TELNET_PASSWORD"),
+			interval: *telnetInterval,
+			timeout:  15 * time.Second,
+		},
+		m: newTelnetMetrics(reg),
+	}
+	if tp.cfg.password == "" {
+		log.Fatal("XS508TM_TELNET_ADDR is set but XS508TM_TELNET_PASSWORD is empty")
+	}
+	if tp.cfg.interval < 30*time.Second {
+		log.Fatalf("telnet interval %s is too aggressive for the switch management plane; use 30s or more", tp.cfg.interval)
+	}
+	log.Printf("management-shell /proc health metrics against %s every %s (telnet primary, zero web sessions)", tp.cfg.addr, tp.cfg.interval)
+	tp.poll() // one synchronous poll so /metrics is populated before the first scrape
+	go tp.run()
+
+	// --- opt-in REST/web-API collector: OFF by default ---
+	if *interval < 15*time.Second {
+		log.Printf("rest interval %s is below the 15s floor; using 15s", *interval)
+		*interval = 15 * time.Second
+	}
+	if envBool("XS508TM_REST_ENABLE") {
+		password := os.Getenv("XS508TM_PASSWORD")
+		if password == "" {
+			log.Fatal("XS508TM_REST_ENABLE=true but XS508TM_PASSWORD is empty")
+		}
+		client, err := xs508tm.NewClient(*endpoint, *username, password, *insecure)
+		if err != nil {
+			log.Fatalf("create rest client: %v", err)
+		}
+		p := &poller{client: client, m: newMetrics(reg)}
+		log.Printf("REST/web-API switch-stats metrics ENABLED against %s every %s - this holds a WEB SESSION; "+
+			"a poll loop here has re-locked the admin account before", *endpoint, *interval)
 		p.poll()
-		for range time.Tick(*interval) {
-			p.poll()
-		}
-	}()
-
-	// Optional management-plane health collector over the root shell. It is
-	// entirely opt-in: without XS508TM_TELNET_ADDR the exporter is REST-only,
-	// exactly as before. See telnet.go for what it collects and, more
-	// importantly, the safety note on what it must never collect.
-	if addr := os.Getenv("XS508TM_TELNET_ADDR"); addr != "" {
-		tp := &telnetPoller{
-			cfg: telnetConfig{
-				addr:     addr,
-				username: envOr("XS508TM_TELNET_USER", "root"),
-				password: os.Getenv("XS508TM_TELNET_PASSWORD"),
-				interval: *telnetInterval,
-				timeout:  15 * time.Second,
-			},
-			m: newTelnetMetrics(reg),
-		}
-		if tp.cfg.password == "" {
-			log.Fatal("XS508TM_TELNET_ADDR is set but XS508TM_TELNET_PASSWORD is empty")
-		}
-		if tp.cfg.interval < 30*time.Second {
-			log.Fatalf("telnet interval %s is too aggressive for the switch management plane; use 30s or more", tp.cfg.interval)
-		}
-		log.Printf("management-shell health metrics enabled against %s every %s", addr, tp.cfg.interval)
-		go tp.run()
+		go func() {
+			for range time.Tick(*interval) {
+				p.poll()
+			}
+		}()
+	} else {
+		log.Print("REST/web-API switch-stats collector disabled (telnet /proc only, zero web sessions). " +
+			"Set XS508TM_REST_ENABLE=true with XS508TM_PASSWORD to enable it - or enable a read-only SNMP " +
+			"community for a session-free path.")
 	}
 
 	mux := http.NewServeMux()
@@ -415,7 +457,7 @@ func main() {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 
-	log.Printf("polling %s every %s; serving metrics on %s", *endpoint, *interval, *listen)
+	log.Printf("serving metrics on %s", *listen)
 	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }
@@ -425,4 +467,26 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// envBool reads a boolean-ish env var. Empty/unset is false, so the REST
+// collector stays off unless explicitly turned on.
+func envBool(k string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// isFlagSet reports whether the named flag was passed on the command line.
+func isFlagSet(name string) bool {
+	set := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
 }

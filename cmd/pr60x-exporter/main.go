@@ -315,40 +315,89 @@ func (p *poller) poll() {
 
 func main() {
 	var (
-		listen   = flag.String("listen", ":9812", "Address to serve /metrics on.")
-		endpoint = flag.String("endpoint", envOr("PR60X_ENDPOINT", "https://192.0.2.1"), "Router base URL.")
-		username = flag.String("username", envOr("PR60X_USERNAME", "admin"), "Router admin username.")
+		listen      = flag.String("listen", ":9812", "Address to serve /metrics on.")
+		sshInterval = flag.Duration("ssh-interval", 60*time.Second,
+			"Root-SSH poll interval (the primary data path). Not below 15s.")
+		endpoint = flag.String("endpoint", envOr("PR60X_ENDPOINT", "https://192.0.2.1"), "Router base URL (REST fallback).")
+		username = flag.String("username", envOr("PR60X_USERNAME", "admin"), "Router admin username (REST fallback).")
 		interval = flag.Duration("interval", 60*time.Second,
-			"How often to poll the router. Do not set this aggressively - the device's config daemon degrades under rapid RPC load.")
+			"REST fallback poll interval when the REST collector is enabled. Do not set this aggressively - the device's config daemon degrades under rapid RPC load.")
 		insecure = flag.Bool("insecure", true, "Skip TLS verification (the router serves a self-signed cert on a private IP).")
+		restFlag = flag.Bool("rest", false,
+			"Enable the opt-in REST/JSON-RPC collector (or set PR60X_REST_ENABLE=true). OFF by default. "+
+				"It recovers the metrics not available over root SSH - negotiated per-port link up/speed, the chassis "+
+				"fan RPM and API temperature sensor, and the security-posture flags (UPnP/DMZ/WAN-ping/secure-DNS/port-"+
+				"forwards). TRADEOFF: it authenticates with the router ADMIN password (being rotated) and its config "+
+				"daemon degrades under load, which is why SSH is preferred. Requires PR60X_PASSWORD.")
 	)
 	flag.Parse()
 
-	password := os.Getenv("PR60X_PASSWORD")
-	if password == "" {
-		log.Fatal("PR60X_PASSWORD is required")
+	// SSH-FIRST GUARD. SSH is the primary data path: without the root-shell
+	// address there is nothing to poll on the default path, and we refuse to
+	// start rather than come up serving an empty /metrics that looks like a
+	// healthy router.
+	if os.Getenv("PR60X_SSH_ADDR") == "" {
+		log.Fatal("PR60X_SSH_ADDR is required: SSH is this exporter's primary data path. " +
+			"Set it to the router's dropbear root shell, host:port, e.g. <router-host>:22, with PR60X_SSH_KEY_FILE " +
+			"pointing at the root SSH private key. The REST/JSON-RPC collector is an opt-in fallback " +
+			"(PR60X_REST_ENABLE=true), not a substitute.")
 	}
-	if *interval < 15*time.Second {
-		log.Fatalf("interval %s is too aggressive for this device; use 15s or more", *interval)
-	}
-
-	client, err := pr60x.NewClient(*endpoint, *username, password, *insecure)
-	if err != nil {
-		log.Fatalf("create client: %v", err)
+	// PR60X_REST_ENABLE is the authority so the deployment can flip the
+	// collector on from the env alone. An explicit --rest overrides the env.
+	if isFlagSet("rest") {
+		if err := os.Setenv("PR60X_REST_ENABLE", strconv.FormatBool(*restFlag)); err != nil {
+			log.Fatalf("set PR60X_REST_ENABLE: %v", err)
+		}
 	}
 
 	reg := prometheus.NewRegistry()
-	p := &poller{client: client, m: newMetrics(reg)}
 
-	go func() {
-		p.poll()
-		for range time.Tick(*interval) {
-			p.poll()
+	// --- root-SSH collector: the PRIMARY, default data path ---
+	if *sshInterval < 15*time.Second {
+		log.Printf("ssh interval %s is below the 15s floor; using 15s", *sshInterval)
+		*sshInterval = 15 * time.Second
+	}
+	sshCfg, err := loadSSHConfig(*sshInterval, 15*time.Second)
+	if err != nil {
+		log.Fatalf("ssh collector: %v", err)
+	}
+	sp := &sshPoller{cfg: *sshCfg, m: newSSHMetrics(reg)}
+	log.Printf("root-SSH metrics against %s every %s (SSH primary)", sshCfg.addr, sshCfg.interval)
+	sp.poll() // one synchronous poll so /metrics is populated before the first scrape
+	go sp.run()
+
+	// --- opt-in REST/JSON-RPC collector: OFF by default ---
+	if *interval < 15*time.Second {
+		log.Printf("rest interval %s is below the 15s floor; using 15s", *interval)
+		*interval = 15 * time.Second
+	}
+	if envBool("PR60X_REST_ENABLE") {
+		password := os.Getenv("PR60X_PASSWORD")
+		if password == "" {
+			log.Fatal("PR60X_REST_ENABLE=true but PR60X_PASSWORD is empty")
 		}
-	}()
+		client, err := pr60x.NewClient(*endpoint, *username, password, *insecure)
+		if err != nil {
+			log.Fatalf("create rest client: %v", err)
+		}
+		p := &poller{client: client, m: newMetrics(reg)}
+		log.Printf("REST/JSON-RPC metrics ENABLED against %s every %s - this uses the router ADMIN password and "+
+			"its config daemon degrades under load", *endpoint, *interval)
+		p.poll()
+		go func() {
+			for range time.Tick(*interval) {
+				p.poll()
+			}
+		}()
+	} else {
+		log.Print("REST/JSON-RPC collector disabled (SSH-only, no web-admin login). " +
+			"Set PR60X_REST_ENABLE=true with PR60X_PASSWORD to enable it.")
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	// /healthz means "the process is up", not "the router answered" - it serves
+	// a cached snapshot. Router reachability is the pr60x_ssh_up METRIC.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
@@ -358,7 +407,7 @@ func main() {
 <body><h1>PR60X exporter</h1><p><a href="/metrics">Metrics</a></p></body></html>`))
 	})
 
-	log.Printf("polling %s every %s; serving metrics on %s", *endpoint, *interval, *listen)
+	log.Printf("serving metrics on %s", *listen)
 	srv := &http.Server{
 		Addr:              *listen,
 		Handler:           mux,
@@ -372,4 +421,27 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// envBool reads a boolean-ish env var. Empty/unset is false, so the REST
+// collector stays off unless explicitly turned on.
+func envBool(k string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// isFlagSet reports whether the named flag was passed on the command line, so
+// an explicit --rest=false is honoured over the env.
+func isFlagSet(name string) bool {
+	set := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
 }

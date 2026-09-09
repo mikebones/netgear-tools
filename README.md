@@ -28,10 +28,10 @@ internal/cm1000/      cable-modem client - DOCSIS status scrape
 internal/provider/    Terraform provider, built on the clients
 
 cmd/cert-operator/    installs renewed TLS certs onto the appliances
-cmd/pr60x-exporter/   Prometheus exporter for the router
-cmd/xs508tm-exporter/ Prometheus exporter for the switch (REST + optional root shell)
+cmd/pr60x-exporter/   Prometheus exporter for the router (root SSH; opt-in REST)
+cmd/xs508tm-exporter/ Prometheus exporter for the switch (root telnet /proc; opt-in REST)
 cmd/ms510txup-exporter/ Prometheus exporter for the PoE switch (root SSH; opt-in CGI)
-cmd/wax630e-exporter/ Prometheus exporter for the access point
+cmd/wax630e-exporter/ Prometheus exporter for the access point (root SSH; opt-in REST)
 cmd/cm1000-exporter/  Prometheus exporter for the cable modem
 
 deploy/kubernetes/    a worked exporter manifest (PR60X) as a template
@@ -257,13 +257,26 @@ Port counters are exposed as **gauges, not counters**: the devices zero them on
 reboot with no reset signal, so Prometheus would otherwise read a reboot as a
 counter reset and invent an enormous rate.
 
-| Exporter | Default port | Transport | Key env / flags |
-| --- | --- | --- | --- |
-| `pr60x-exporter` | `:9812` | JSON-RPC | `PR60X_PASSWORD`; `--endpoint`, `--interval` |
-| `xs508tm-exporter` | `:9813` | REST (+ optional root telnet) | `XS508TM_PASSWORD`; `--endpoint`, `--interval`; opt-in `XS508TM_TELNET_ADDR` |
-| `ms510txup-exporter` | `:9814` | root SSH `/proc` (+ opt-in CGI) | `MS510TXUP_SSH_ADDR`, `MS510TXUP_SSH_KEY_FILE`; opt-in `MS510TXUP_CGI_ENABLE` |
-| `wax630e-exporter` | — | query-by-example | `WAX630E_PASSWORD`; `--endpoint` |
-| `cm1000-exporter` | `:9816` | HTML/JSON status | `CM1000_PASSWORD`; `--endpoint`, `--interval` |
+Every **rooted** device now defaults to its **least-session root path** (SSH or,
+for the XS508TM, root telnet `/proc`) and keeps the old REST/API/CGI path as a
+**config-gated fallback** — off unless a `*_ENABLE`/`*_ADDR` flag turns it on.
+The only exception is the CM1000 cable modem, which has no root and stays
+REST-only pending it.
+
+| Exporter | Default port | Primary (default) transport | Config-gated fallback | Key env / flags |
+| --- | --- | --- | --- | --- |
+| `pr60x-exporter` | `:9812` | root SSH (ubus/`/proc`/`tc`/lsmod) | JSON-RPC (`PR60X_REST_ENABLE`) | `PR60X_SSH_ADDR`, `PR60X_SSH_KEY_FILE`; opt-in `PR60X_REST_ENABLE`+`PR60X_PASSWORD` |
+| `xs508tm-exporter` | `:9813` | root telnet `/proc` health | REST switch stats (`XS508TM_REST_ENABLE`) | `XS508TM_TELNET_ADDR`, `XS508TM_TELNET_PASSWORD`; opt-in `XS508TM_REST_ENABLE`+`XS508TM_PASSWORD` |
+| `ms510txup-exporter` | `:9814` | root SSH `/proc` | CGI/web-admin (`MS510TXUP_CGI_ENABLE`) | `MS510TXUP_SSH_ADDR`, `MS510TXUP_SSH_KEY_FILE`; opt-in `MS510TXUP_CGI_ENABLE` |
+| `wax630e-exporter` | `:9815` | root SSH (`iw`/`/proc`) | query-by-example web API (`WAX630E_REST_ENABLE`) | `WAX630E_SSH_ADDR`, `WAX630E_SSH_KEY_FILE`; opt-in `WAX630E_REST_ENABLE`+`WAX630E_PASSWORD` |
+| `cm1000-exporter` | `:9816` | HTML/JSON status (no root yet) | — | `CM1000_PASSWORD`; `--endpoint`, `--interval` |
+
+Each SSH/telnet primary path **refuses to start without its `*_ADDR`** rather
+than come up serving an empty `/metrics` that looks like a healthy device, and
+exports a `*_ssh_up`/`*_telnet_up` gauge as the availability signal to alert on.
+Every fallback **degrades gracefully**: a fallback that is off (or whose device
+is unreachable) never affects the primary metrics. Both collectors on a device
+share **one Prometheus registry**.
 
 ### The session-limit tradeoff (MS510TXUP)
 
@@ -292,41 +305,114 @@ requirement are **gone**: the SSH path uses `--ssh-interval` (floor 30s) and the
 CGI path uses `--cgi-interval` (floor 15s), and the password is needed only when
 CGI is enabled.
 
-### The management-shell collector (XS508TM) — and a hard safety rule
+### SSH-primary (PR60X)
 
-`xs508tm-exporter` is REST by default. Setting `XS508TM_TELNET_ADDR` (with
-`XS508TM_TELNET_PASSWORD`) turns on an **optional** management-plane health
-collector over the root shell: management-CPU load and memory, the switching
-daemon's RSS/threads, and how full the config partition is — "is this appliance
-about to fall over" signals not visible over REST.
+`pr60x-exporter` defaults to the router's **dropbear root shell** (key auth, no
+password) and holds no web-admin session. One session per interval runs a fixed
+**passive-read** batch: `ubus call network.interface.wan status` (WAN up/uptime),
+`/proc/net/dev` (per-interface byte/packet/error/drop counters), the conntrack
+count/max, `/proc/loadavg`, `/proc/meminfo`, `/proc/uptime`, `/sys/class/thermal`
+(SoC die temps), `lsmod` (whether the Qualcomm `qca_nss_ecm`/PPE offload modules
+are loaded — the modules that **bypass** the CAKE qdisc), and `tc -s qdisc show`
+(CAKE/sqm sent/dropped/overlimits/backlog).
 
-It runs a **fixed set of passive reads only** (`cat /proc/*`, `df`). It must
-never touch the Broadcom SDK diag console (`/sbin/devshell`,
+- **Required:** `PR60X_SSH_ADDR` (`<router-host>:22`) and `PR60X_SSH_KEY_FILE`.
+  Optional `PR60X_SSH_USER` (default `root`), `PR60X_SSH_HOSTKEY`. `pr60x_ssh_up`
+  is the availability signal.
+- **Opt-in REST fallback:** `PR60X_REST_ENABLE=true` (plus `PR60X_PASSWORD`, or
+  the `--rest` flag) recovers what SSH cannot: negotiated per-port link
+  up/speed, the chassis fan RPM and API temperature sensor, and the
+  security-posture flags (UPnP/DMZ/WAN-ping/secure-DNS/port-forwards). **Moving
+  to SSH removes the exporter's dependence on the web-admin password** (which is
+  being rotated separately), and its config daemon degrades under RPC load — so
+  REST is off by default.
+
+### SSH-primary (WAX630E)
+
+`wax630e-exporter` defaults to the AP's **key-auth root shell**. One session per
+interval runs `iw dev` (per-VAP channel/frequency/width/txpower, SSID, type),
+`iw dev <vap> station dump` (**the per-client data the web API cannot provide** —
+associated station count, per-station RSSI, tx/rx bitrates, connected time,
+byte counters), `/proc/net/dev` (per-VAP traffic), and `/proc` CPU/memory/uptime.
+
+- **Required:** `WAX630E_SSH_ADDR` (`<ap-host>:22`) and `WAX630E_SSH_KEY_FILE`.
+  Optional `WAX630E_SSH_USER` (default `root`), `WAX630E_SSH_HOSTKEY`.
+  `wax630e_ssh_up` is the availability signal.
+- **Opt-in REST fallback:** `WAX630E_REST_ENABLE=true` (plus `WAX630E_PASSWORD`,
+  or `--rest`) recovers the config/posture fields not on the shell — management
+  VLAN, syslog enable/target, default-gateway-reachable, cloud/Insight-managed
+  and DHCP-client flags. The AP has a **small session table** and a failed login
+  leaks a slot (fills → the AP 401s the browser too), so the SSH path holding
+  zero web sessions is the safe default.
+
+### The management-shell collector (XS508TM) — SNMP assessment and a hard safety rule
+
+`xs508tm-exporter` defaults to the switch's **root telnet `/proc` health
+collector**, which holds **zero web sessions**: management-CPU load and memory,
+the switching daemon's RSS/threads, and how full the config partition is. It runs
+a **fixed set of passive reads only** (`cat /proc/*`, `df`).
+
+It must never touch the Broadcom SDK diag console (`/sbin/devshell`,
 `/tmp/consolepipe`, the diag socket on `127.0.0.1:2222`): doing so was measured
 to starve the switching daemon's watchdog into a **hard switch reboot roughly
 every 6 minutes**. Die temperature and other ASIC metrics are therefore
-deliberately not collected here; the safe route for those is SNMP.
+deliberately not collected here.
+
+**Why switch stats still come over REST, not SNMP (the assessment):** the
+port/vlan/igmp/LLDP counters are **not in `/proc`**, and the diag console that
+carries them is off-limits, so the only session-free way to reach them is a
+**read-only SNMP community** on udp/161. Enabling that community is a device-side
+config change and is intentionally **not** performed by this metrics tooling — it
+belongs in the switch's managed config, applied deliberately and reversibly. So
+until an SNMP community exists, **the XS508TM cannot fully leave the web session
+for switch stats**, and the REST collector is kept as the config-gated non-SSH
+fallback:
+
+- **Opt-in REST fallback:** `XS508TM_REST_ENABLE=true` (plus `XS508TM_PASSWORD`,
+  or `--rest`) turns on the REST switch/port/vlan/igmp/LLDP stats. **It holds a
+  web session, and a poll loop against the web login has re-locked the admin
+  account before** — which is exactly why it is off by default. When SNMP is
+  enabled, prefer it and leave REST off.
 
 ### Building and running
 
-```bash
-go build ./cmd/pr60x-exporter    && PR60X_PASSWORD=...   ./pr60x-exporter    --endpoint "$PR60X_ENDPOINT"
-go build ./cmd/xs508tm-exporter  && XS508TM_PASSWORD=... ./xs508tm-exporter  --endpoint "$XS508TM_ENDPOINT"
-go build ./cmd/wax630e-exporter  && WAX630E_PASSWORD=... ./wax630e-exporter  --endpoint "$WAX630E_ENDPOINT"
-go build ./cmd/cm1000-exporter   && CM1000_PASSWORD=...  ./cm1000-exporter   --endpoint "$CM1000_ENDPOINT"
+The rooted exporters are **SSH/telnet-primary by default**: point them at the
+device's root shell, no web password needed unless the REST fallback is turned
+on. `--endpoint`/`--interval` and the `*_PASSWORD` env now belong to the opt-in
+fallback only.
 
-# SSH-only by default; no --endpoint/--interval, no password unless CGI is enabled.
+```bash
+# Rooted devices: least-session root path is the default.
+go build ./cmd/pr60x-exporter
+PR60X_SSH_ADDR=<router-host>:22  PR60X_SSH_KEY_FILE=/path/to/key  ./pr60x-exporter
+
+go build ./cmd/wax630e-exporter
+WAX630E_SSH_ADDR=<ap-host>:22    WAX630E_SSH_KEY_FILE=/path/to/key ./wax630e-exporter
+
 go build ./cmd/ms510txup-exporter
 MS510TXUP_SSH_ADDR=<switch-host>:2222 MS510TXUP_SSH_KEY_FILE=/path/to/key ./ms510txup-exporter
+
+go build ./cmd/xs508tm-exporter
+XS508TM_TELNET_ADDR=<switch-host>:2323 XS508TM_TELNET_PASSWORD=... ./xs508tm-exporter
+
+# CM1000 has no root yet: REST-only.
+go build ./cmd/cm1000-exporter   && CM1000_PASSWORD=... ./cm1000-exporter --endpoint "$CM1000_ENDPOINT"
+
+# Turn on a fallback (example): PR60X REST for per-port link/speed + posture flags.
+PR60X_SSH_ADDR=<router-host>:22 PR60X_SSH_KEY_FILE=/path/to/key \
+  PR60X_REST_ENABLE=true PR60X_PASSWORD=... ./pr60x-exporter --endpoint "$PR60X_ENDPOINT"
 ```
 
 Sample output:
 
 ```
-pr60x_up 1
-pr60x_management_mode{mode="local"} 1
-xs508tm_up 1
-xs508tm_lldp_neighbor{local_port="9",remote_sysname="PR60X"} 1
+pr60x_ssh_up 1
+pr60x_wan_up 1
+pr60x_nss_module_loaded{module="qca_nss_ecm"} 0
+pr60x_qdisc_dropped_packets{interface="eth1"} 12
+wax630e_ssh_up 1
+wax630e_station_signal_dbm{interface="wlan0",station="de:ad:be:ef:00:01"} -55
+xs508tm_telnet_up 1
 ms510txup_ssh_up 1
 ms510txup_proc_port_linkdown_reason_info{port="9",reason="HW-NoCableDetected"} 1
 ```
