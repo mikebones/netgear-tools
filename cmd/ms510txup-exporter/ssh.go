@@ -1,32 +1,48 @@
-// Root-shell /proc telemetry for the MS510TXUP, read over SSH rather than the
-// web CGI API.
+// Root-shell /proc telemetry for the MS510TXUP - the ONLY data path this
+// exporter has. It reads the RealTek RTL93xx driver's /proc tree over the
+// dropbear root shell (:2222, ECDSA key auth). There is deliberately NO web CGI
+// path: this switch carries the whole k8s cluster and its embedded web server
+// has a 4-slot session table that locks out the UI (and Terraform) once it
+// fills, so the exporter must hold ZERO web sessions. Everything below comes
+// from root /proc instead, which costs no session at all.
 //
-// WHY THIS EXISTS, AND WHAT THE WEB API CANNOT SEE
-// ------------------------------------------------
-// The CGI API (the rest of this exporter) is a good source for port config,
-// counters, PoE and STP, but it surfaces almost none of what the RealTek
-// RTL93xx driver publishes under /proc. Root on this switch (dropbear on :2222,
-// ECDSA key auth) opens a rich READ-ONLY /proc tree the smart-managed UI hides:
-//
-//   - /proc/linkdown - per-port link-down REASON ring buffer. The web API's
-//     linkDownEvent is a bare count; this says WHY a port bounced (SW-AdminDown,
-//     LinkFault, ...), which is what actually root-causes an etcd/Longhorn stall.
+// WHAT /proc EXPOSES (and the web UI hides)
+// -----------------------------------------
+//   - /proc/hwmon/portmib/<port> - per-port MIB COUNTER samplers: rx/tx bytes,
+//     rx/tx packets, rx/tx multicast+broadcast packets. These are the live
+//     throughput/traffic counters. They ship DISABLED and are turned on
+//     out-of-band by ansible (roles/ms510_port_samplers in the private ansible
+//     repo) - this exporter only READS them (see the SAFETY note). Whether a
+//     sampler is on is read from /proc/switch/hwmon.status and exported as
+//     ms510txup_proc_sampler_enabled so a post-reboot gap (the enable is
+//     RAM-only) is visible.
+//   - /proc/linkdown - per-port link-down REASON ring with real timestamps.
+//     Says WHY a port bounced (SW-AdminDown, HW-NoCableDetected, ...) and WHEN,
+//     which is what root-causes an etcd/Longhorn stall - and what powers the
+//     inter-switch uplink flap alert (the newest reason timestamp is exported).
 //   - /proc/poe      - the SDK's own PoE view: delivered/max power, negotiated
-//     class, delivering-vs-searching, and the global budget/consumed. This is
-//     the authoritative controller reading, distinct from the CGI poe_* metrics.
+//     class, delivering-vs-searching, and the global budget/consumed.
 //   - /proc/optical  - raw SFP EEPROM for the two SFP+ cages (vendor, part,
 //     presence, whether the optic implements DDM).
+//   - /proc/vlan     - VLAN membership and per-port PVID.
 //
-// This collector is gated entirely on MS510TXUP_SSH_ADDR being set. Leave it
-// unset and the exporter behaves exactly as before: CGI only. An SSH failure
-// never touches the CGI metrics - it sets ms510txup_ssh_up to 0 and leaves the
-// last-known /proc gauges in place.
+// WHAT WAS DROPPED with the CGI path, and why it can't come back over SSH:
+//   - per-port LINK up/speed/duplex: not in /proc. /proc/linkdown "(cur: N)" is
+//     the linkdown-ring write pointer, NOT a link-up flag (a busy port reads
+//     cur:0), and the PHY sampler exposes only raw PHY registers.
+//   - per-port ERROR/DISCARD/COLLISION counters: the portmib sampler's fixed
+//     counter set (conf index 2) has none. rate() over the byte/packet counters
+//     plus the /proc/linkdown reason ring cover the operational need.
+//   - STP state and EEE/green-ethernet: neither is in /proc (only the CLI shows
+//     them, and the CLI needs a pty it will not give a non-interactive exec).
+//     These were all CGI-only, so keeping them meant keeping a web session, which
+//     is exactly what this exporter now refuses to do.
 //
 // SAFETY - READ-ONLY /proc ONLY
 // -----------------------------
-// Every command this collector runs is a passive `cat /proc/*`. It never writes
-// a register, never enables a sampler (the /proc/hwmon/* ring buffers ship
-// disabled and enabling them is a WRITE - not done here), and never touches the
+// Every command this collector runs is a passive read (`cat`/`grep` of /proc).
+// It never writes a register, never enables a sampler (that enable lives in
+// ansible, applied deliberately over root - not here), and never touches the
 // CLI or the SDK diag shell. The RTL93xx data-plane knobs are not writable via
 // /proc anyway; the diag binary is absent on the production image. Keep it that
 // way: this is a metrics collector, it has no business mutating the cluster
@@ -38,7 +54,7 @@
 //
 // FIRMWARE DEPENDENCY: root SSH exists only because this unit runs a modified
 // image with dropbear added on :2222. Revert to stock and the shell disappears
-// and this collector goes dark - the graceful-degradation case above.
+// and this exporter goes dark (ms510txup_ssh_up 0) - it has no other data path.
 package main
 
 import (
@@ -67,18 +83,29 @@ type sshConfig struct {
 	timeout  time.Duration
 }
 
-// sshMetrics are the /proc-sourced gauges. They live on the same registry as
-// the CGI metrics but in their own struct so the two collectors never reach
-// into each other. Everything /proc-sourced carries a proc_ name segment so it
-// never collides with the CGI poe_* / port_* families.
+// sshMetrics are the /proc-sourced gauges - the exporter's entire metric set,
+// since the CGI collector was removed. Everything /proc-sourced carries a proc_
+// name segment, both as an honest source marker and so the families stay
+// distinct (e.g. proc_poe_* is the SDK controller's own PoE view).
 type sshMetrics struct {
 	up            prometheus.Gauge
 	scrapeSeconds prometheus.Gauge
 	scrapeErrors  prometheus.Counter
 
+	// /proc/hwmon/portmib/<port> - per-port MIB counter samplers.
+	rxBytes         *prometheus.GaugeVec
+	txBytes         *prometheus.GaugeVec
+	rxPackets       *prometheus.GaugeVec
+	txPackets       *prometheus.GaugeVec
+	rxMcastBcast    *prometheus.GaugeVec
+	txMcastBcast    *prometheus.GaugeVec
+	counterSampleTS *prometheus.GaugeVec
+	samplerEnabled  *prometheus.GaugeVec
+
 	// /proc/linkdown - per-port link-down reason ring.
 	linkdownEvents *prometheus.GaugeVec
 	linkdownReason *prometheus.GaugeVec
+	linkdownLastTS *prometheus.GaugeVec
 
 	// /proc/poe - the SDK controller's own PoE view.
 	poeBudgetMW    prometheus.Gauge
@@ -102,18 +129,47 @@ func newSSHMetrics(reg prometheus.Registerer) *sshMetrics {
 	f := factory{reg}
 	return &sshMetrics{
 		up: f.gauge("ssh_up", "1 if the last root-shell /proc poll succeeded. 0 means the dropbear "+
-			"root shell was unreachable (or the switch was reverted to stock firmware); the CGI "+
-			"metrics are unaffected."),
+			"root shell was unreachable (or the switch was reverted to stock firmware) - and since this "+
+			"exporter is SSH-only, a 0 means no fresh metrics at all. THE availability signal to alert on."),
 		scrapeSeconds: f.gauge("ssh_scrape_duration_seconds", "Duration of the last root-shell /proc poll."),
 		scrapeErrors:  f.counter("ssh_scrape_errors_total", "Failed root-shell /proc polls."),
 
+		rxBytes: f.vec("proc_port_rx_bytes", "Bytes received on the port (ingress, device->switch), from the "+
+			"/proc/hwmon/portmib/<port> MIB sampler. NOTE: this is a 32-bit counter that WRAPS at ~4 GiB - use "+
+			"rate()/increase(), and watch proc_port_counter_sample_timestamp_seconds for a stalled sampler. Zero for a "+
+			"port whose sampler is disabled (see proc_sampler_enabled).", "port"),
+		txBytes: f.vec("proc_port_tx_bytes", "Bytes transmitted on the port (egress, switch->device), from the "+
+			"/proc/hwmon/portmib sampler. 32-bit, wraps at ~4 GiB - use rate()/increase().", "port"),
+		rxPackets: f.vec("proc_port_rx_packets", "Packets received on the port (ingress, device->switch), from "+
+			"the /proc/hwmon/portmib sampler.", "port"),
+		txPackets: f.vec("proc_port_tx_packets", "Packets transmitted on the port (egress, switch->device), from "+
+			"the /proc/hwmon/portmib sampler.", "port"),
+		rxMcastBcast: f.vec("proc_port_rx_multicast_broadcast_packets", "Multicast+broadcast packets received on "+
+			"the port (ingress from the device). Low and device-specific; contrast with the tx side, which carries "+
+			"the whole broadcast domain's flood.", "port"),
+		txMcastBcast: f.vec("proc_port_tx_multicast_broadcast_packets", "Multicast+broadcast packets transmitted "+
+			"on the port (egress toward the device) - dominated by the broadcast flood copied to every port, so it "+
+			"reads similarly across ports in the same VLAN.", "port"),
+		counterSampleTS: f.vec("proc_port_counter_sample_timestamp_seconds", "Unix time of the newest "+
+			"/proc/hwmon/portmib ring sample for the port. time()-this is the sampler's staleness: it should track "+
+			"the sampler period (10s). A value stuck in the past means the sampler stopped (e.g. lost after a "+
+			"reboot before ansible re-applied the enable).", "port"),
+		samplerEnabled: f.vec("proc_sampler_enabled", "1 if the per-port MIB counter sampler is enabled, read "+
+			"from /proc/switch/hwmon.status. The enable is applied out-of-band by ansible and is RAM-only, so this "+
+			"drops to 0 across a reboot until ansible re-runs - alert on it to catch a silent counter gap.", "port"),
+
 		linkdownEvents: f.vec("proc_port_linkdown_logged_events", "Number of real (non-Unknown) entries in "+
-			"the RealTek driver's per-port link-down REASON ring at /proc/linkdown. The CGI "+
-			"port_link_down_events is a bare count; this is evidence the ring actually recorded a reason, "+
-			"and proc_port_linkdown_reason_info carries WHY.", "port"),
+			"the RealTek driver's per-port link-down REASON ring at /proc/linkdown (the ring holds the last 8). "+
+			"Evidence the ring actually recorded a reason; proc_port_linkdown_reason_info carries WHY and "+
+			"proc_port_linkdown_last_timestamp_seconds carries WHEN.", "port"),
 		linkdownReason: f.vec("proc_port_linkdown_reason_info", "Always 1. The most recent non-Unknown "+
-			"link-down reason for the port, as the driver names it (e.g. SW-AdminDown, LinkFault), carried "+
+			"link-down reason for the port, as the driver names it (e.g. SW-AdminDown, HW-NoCableDetected), carried "+
 			"as a label. 'none' when the ring holds no real reason.", "port", "reason"),
+		linkdownLastTS: f.vec("proc_port_linkdown_last_timestamp_seconds", "Unix time of the MOST RECENT "+
+			"non-Unknown link-down entry in /proc/linkdown for the port, 0 if none. This is the flap signal to "+
+			"alert on: time()-this is 'seconds since last flap', and changes(...[window]) counts distinct flaps in "+
+			"the window even though the ring only holds 8. The inter-switch SFP+ uplink (port 9, xg9) logging "+
+			"HW-NoCableDetected repeatedly is a failing/loose DAC.", "port"),
 
 		poeBudgetMW:   f.gauge("proc_poe_budget_milliwatts", "Global PoE power budget from /proc/poe, in mW - the SDK controller's own figure."),
 		poeConsumedMW: f.gauge("proc_poe_consumed_milliwatts", "Global PoE power currently consumed from /proc/poe, in mW - the SDK controller's own measurement."),
@@ -177,16 +233,39 @@ func (p *sshPoller) poll() {
 	p.parseLinkdown(sec["LINKDOWN"])
 	p.parseOptical(sec["OPTICAL"])
 	p.parseVLAN(sec["VLAN"])
+	p.parseHwmonStatus(sec["HWMON"])
+	p.parseMIB(sec["MIB"])
 	p.m.up.Set(1)
 }
 
-// batch is the ENTIRE set of commands this collector will ever run. Every line
-// is a passive read. See the safety note at the top of the file before adding.
-const sshBatch = `echo @@POE; cat /proc/poe 2>/dev/null; ` +
-	`echo @@LINKDOWN; cat /proc/linkdown 2>/dev/null; ` +
-	`echo @@OPTICAL; cat /proc/optical 2>/dev/null; ` +
-	`echo @@VLAN; cat /proc/vlan 2>/dev/null; ` +
-	`echo @@DONE`
+// mibPorts are the front-panel port sampler files under /proc/hwmon/portmib,
+// in front-panel order. The trailing digits are the port label (mg1..xg10 =
+// 1..10), matching the rest of this exporter's port label space.
+var mibPorts = []string{"mg1", "mg2", "mg3", "mg4", "xmg5", "xmg6", "xmg7", "xmg8", "xg9", "xg10"}
+
+// sshBatch is the ENTIRE set of commands this collector will ever run. Every
+// line is a passive read - see the safety note at the top of the file before
+// adding. The portmib reads take only the newest ring row (0000) per port to
+// keep the single session's output small.
+var sshBatch = buildSSHBatch()
+
+func buildSSHBatch() string {
+	var b strings.Builder
+	b.WriteString(`echo @@POE; cat /proc/poe 2>/dev/null; `)
+	b.WriteString(`echo @@LINKDOWN; cat /proc/linkdown 2>/dev/null; `)
+	b.WriteString(`echo @@OPTICAL; cat /proc/optical 2>/dev/null; `)
+	b.WriteString(`echo @@VLAN; cat /proc/vlan 2>/dev/null; `)
+	b.WriteString(`echo @@HWMON; cat /proc/switch/hwmon.status 2>/dev/null; `)
+	b.WriteString(`echo @@MIB; `)
+	for _, p := range mibPorts {
+		// One "port <name>" marker then that port's newest sample row. grep is
+		// a passive read; if the sampler is disabled the row is absent, which
+		// the parser tolerates.
+		fmt.Fprintf(&b, `echo "port %s"; grep '^0000:' /proc/hwmon/portmib/%s 2>/dev/null; `, p, p)
+	}
+	b.WriteString(`echo @@DONE`)
+	return b.String()
+}
 
 // collect dials, authenticates, runs the batch over a single session and
 // returns the combined output.
@@ -351,12 +430,14 @@ func (p *sshPoller) parseLinkdown(s string) {
 	}
 	p.m.linkdownEvents.Reset()
 	p.m.linkdownReason.Reset()
+	p.m.linkdownLastTS.Reset()
 
 	var (
 		port     string
 		inLog    bool
 		count    int
 		lastReas string
+		lastTS   float64
 	)
 	flush := func() {
 		if port == "" {
@@ -367,6 +448,7 @@ func (p *sshPoller) parseLinkdown(s string) {
 			lastReas = "none"
 		}
 		p.m.linkdownReason.WithLabelValues(port, lastReas).Set(1)
+		p.m.linkdownLastTS.WithLabelValues(port).Set(lastTS)
 	}
 
 	sc := bufio.NewScanner(strings.NewReader(s))
@@ -380,6 +462,7 @@ func (p *sshPoller) parseLinkdown(s string) {
 			inLog = false
 			count = 0
 			lastReas = ""
+			lastTS = 0
 			continue
 		}
 		if strings.HasPrefix(trimmed, "reason log") {
@@ -395,28 +478,36 @@ func (p *sshPoller) parseLinkdown(s string) {
 		}
 		// A reason entry: "<ts> (<code>)<Reason>". Empty slots read
 		// "0.000000000 (0)Unknown".
-		reason, ok := parseReasonEntry(trimmed)
+		reason, ts, ok := parseReasonEntry(trimmed)
 		if !ok {
 			continue
 		}
 		count++
 		if lastReas == "" {
-			lastReas = reason // entries are newest-first, so the first real one wins
+			// Entries are newest-first, so the first real one is the most
+			// recent flap - its reason and timestamp both win.
+			lastReas = reason
+			lastTS = ts
 		}
 	}
 	flush()
 }
 
-// parseReasonEntry returns the reason text of a link-down ring entry, and false
-// if the entry is an empty slot (timestamp 0 / "Unknown").
-func parseReasonEntry(s string) (string, bool) {
+// parseReasonEntry returns the reason text and Unix timestamp (seconds) of a
+// link-down ring entry, and false if the entry is an empty slot (timestamp 0 /
+// "Unknown"). The driver prints the timestamp as "<sec>.<nanos>".
+func parseReasonEntry(s string) (string, float64, bool) {
 	fields := strings.Fields(s)
 	if len(fields) < 2 {
-		return "", false
+		return "", 0, false
 	}
 	// fields[0] is the timestamp; 0.000000000 marks an empty slot.
 	if strings.HasPrefix(fields[0], "0.000000000") {
-		return "", false
+		return "", 0, false
+	}
+	ts, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return "", 0, false
 	}
 	// The rest is "(code)Reason" possibly with spaces in the reason.
 	rest := strings.TrimSpace(strings.Join(fields[1:], " "))
@@ -425,9 +516,9 @@ func parseReasonEntry(s string) (string, bool) {
 	}
 	rest = strings.TrimSpace(rest)
 	if rest == "" || strings.EqualFold(rest, "Unknown") {
-		return "", false
+		return "", 0, false
 	}
-	return rest, true
+	return rest, ts, true
 }
 
 // --- /proc/optical ----------------------------------------------------------
@@ -655,6 +746,117 @@ func expandPortList(s string) []string {
 		}
 	}
 	return out
+}
+
+// --- /proc/switch/hwmon.status ----------------------------------------------
+//
+// The portmib block reads:
+//
+//	portmib:
+//	  mg1 enabled: 1, period: 10
+//	  mg2 enabled: 0
+//	  ...
+//
+// We emit proc_sampler_enabled for the front-panel ports only (the phy/sfp/lag
+// entries in the same file are skipped - they carry names like "0.0"/"lag1"
+// that are not in mibPorts).
+func (p *sshPoller) parseHwmonStatus(s string) {
+	if s == "" {
+		return
+	}
+	p.m.samplerEnabled.Reset()
+	want := map[string]bool{}
+	for _, name := range mibPorts {
+		want[name] = true
+	}
+	for _, raw := range strings.Split(s, "\n") {
+		fields := strings.Fields(strings.TrimSpace(raw))
+		if len(fields) < 3 || !want[fields[0]] || fields[1] != "enabled:" {
+			continue
+		}
+		// fields[2] is "1" or "0", possibly with a trailing comma ("1,").
+		v := strings.TrimSuffix(fields[2], ",")
+		p.m.samplerEnabled.WithLabelValues(portNumFromName(fields[0])).Set(b2f(v == "1"))
+	}
+}
+
+// --- /proc/hwmon/portmib/<port> ---------------------------------------------
+//
+// The batch prints, per port, a marker line and that port's newest ring row:
+//
+//	port mg4
+//	0000: <unix_ts>.<nanos> <c0hi> <c0lo> <c1hi> <c1lo> ... <c5hi> <c5lo>
+//
+// Each of the six counters is a 64-bit value split into two 32-bit hex words
+// (high, low). The counter set (RTL93xx hwmon conf index 2) is, in order:
+// rx packets, rx mcast+bcast, rx bytes, tx packets, tx mcast+bcast, tx bytes -
+// where rx is ingress (device->switch) and tx is egress (switch->device).
+// Direction was confirmed on the device: the tx mcast+bcast counter reads
+// uniformly across ports (the broadcast flood copied to every egress) while the
+// rx one is device-specific. The byte counters are 32-bit and wrap.
+func (p *sshPoller) parseMIB(s string) {
+	if s == "" {
+		return
+	}
+	p.m.rxBytes.Reset()
+	p.m.txBytes.Reset()
+	p.m.rxPackets.Reset()
+	p.m.txPackets.Reset()
+	p.m.rxMcastBcast.Reset()
+	p.m.txMcastBcast.Reset()
+	p.m.counterSampleTS.Reset()
+
+	var port string
+	for _, raw := range strings.Split(s, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "port ") {
+			port = portNumFromName(line)
+			continue
+		}
+		if port == "" || !strings.HasPrefix(line, "0000:") {
+			continue
+		}
+		ts, c, ok := parseMIBRow(line)
+		if !ok {
+			continue
+		}
+		p.m.rxPackets.WithLabelValues(port).Set(c[0])
+		p.m.rxMcastBcast.WithLabelValues(port).Set(c[1])
+		p.m.rxBytes.WithLabelValues(port).Set(c[2])
+		p.m.txPackets.WithLabelValues(port).Set(c[3])
+		p.m.txMcastBcast.WithLabelValues(port).Set(c[4])
+		p.m.txBytes.WithLabelValues(port).Set(c[5])
+		p.m.counterSampleTS.WithLabelValues(port).Set(ts)
+		port = "" // one row per port
+	}
+}
+
+// parseMIBRow parses a "0000: <ts> <hi lo>x6" ring row into the sample
+// timestamp (seconds) and the six 64-bit counters. Returns false if the line is
+// not a full row (e.g. a disabled sampler that printed nothing).
+func parseMIBRow(s string) (float64, [6]float64, bool) {
+	var c [6]float64
+	fields := strings.Fields(s)
+	// fields[0]="0000:", fields[1]=timestamp, then 12 hex words.
+	if len(fields) < 2+12 {
+		return 0, c, false
+	}
+	ts, err := strconv.ParseFloat(fields[1], 64)
+	if err != nil {
+		return 0, c, false
+	}
+	for i := 0; i < 6; i++ {
+		hi, err1 := strconv.ParseUint(fields[2+i*2], 16, 64)
+		lo, err2 := strconv.ParseUint(fields[2+i*2+1], 16, 64)
+		if err1 != nil || err2 != nil {
+			return 0, c, false
+		}
+		c[i] = float64(hi<<32 | lo)
+	}
+	return ts, c, true
 }
 
 // --- shared helpers ---------------------------------------------------------

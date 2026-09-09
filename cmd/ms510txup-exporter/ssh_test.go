@@ -80,6 +80,20 @@ PVID
 MultiGigabitEthernet1: 1
 MultiGigabitEthernet2: 20
 XGigabitEthernet10: 1
+@@HWMON
+phy:
+  0.0 enabled: 0
+portmib:
+  mg4 enabled: 1, period: 10
+  xg9 enabled: 1, period: 10
+  xg10 enabled: 0
+  lag1 enabled: 0
+@@MIB
+port mg4
+0000: 1700000000.000000000 00000000 00000064 00000000 00000005 00000001 00000000 00000000 00000032 00000000 00000003 00000000 00001000
+port xg9
+0000: 1700000500.000000000 00000000 0000000A 00000000 00000002 00000000 00000BB8 00000000 00000014 00000000 00000004 00000000 00001770
+port xg10
 @@DONE
 `
 
@@ -128,6 +142,8 @@ func TestParseProc(t *testing.T) {
 	p.parseLinkdown(sec["LINKDOWN"])
 	p.parseOptical(sec["OPTICAL"])
 	p.parseVLAN(sec["VLAN"])
+	p.parseHwmonStatus(sec["HWMON"])
+	p.parseMIB(sec["MIB"])
 
 	mfs := gather(t, reg)
 
@@ -163,6 +179,45 @@ func TestParseProc(t *testing.T) {
 	}
 	if _, ok := val(mfs["ms510txup_proc_port_linkdown_reason_info"], map[string]string{"port": "3", "reason": "none"}); !ok {
 		t.Errorf("linkdown port3 reason 'none' not found")
+	}
+	// port 4's most recent (and only) real entry timestamp; port 3 has none -> 0.
+	if v, ok := val(mfs["ms510txup_proc_port_linkdown_last_timestamp_seconds"], map[string]string{"port": "4"}); !ok || v != 1767225610.47 {
+		t.Errorf("linkdown port4 last ts = %v, %v; want 1767225610.47", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_port_linkdown_last_timestamp_seconds"], map[string]string{"port": "3"}); !ok || v != 0 {
+		t.Errorf("linkdown port3 last ts = %v, %v; want 0", v, ok)
+	}
+
+	// --- hwmon.status: front-panel sampler enable flags (phy/lag skipped) ---
+	if v, ok := val(mfs["ms510txup_proc_sampler_enabled"], map[string]string{"port": "4"}); !ok || v != 1 {
+		t.Errorf("sampler_enabled port4 = %v, %v; want 1", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_sampler_enabled"], map[string]string{"port": "10"}); !ok || v != 0 {
+		t.Errorf("sampler_enabled port10 = %v, %v; want 0", v, ok)
+	}
+
+	// --- portmib counters: mg4 (port 4) uses a hi word to exercise 64-bit combine ---
+	if v, ok := val(mfs["ms510txup_proc_port_rx_packets"], map[string]string{"port": "4"}); !ok || v != 100 {
+		t.Errorf("rx_packets port4 = %v, %v; want 100", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_port_rx_bytes"], map[string]string{"port": "4"}); !ok || v != 4294967296 {
+		t.Errorf("rx_bytes port4 = %v, %v; want 4294967296 (0x1_00000000)", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_port_tx_bytes"], map[string]string{"port": "4"}); !ok || v != 4096 {
+		t.Errorf("tx_bytes port4 = %v, %v; want 4096", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_port_rx_multicast_broadcast_packets"], map[string]string{"port": "4"}); !ok || v != 5 {
+		t.Errorf("rx_mcast_bcast port4 = %v, %v; want 5", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_port_counter_sample_timestamp_seconds"], map[string]string{"port": "9"}); !ok || v != 1700000500 {
+		t.Errorf("counter_sample_ts port9 = %v, %v; want 1700000500", v, ok)
+	}
+	if v, ok := val(mfs["ms510txup_proc_port_tx_bytes"], map[string]string{"port": "9"}); !ok || v != 6000 {
+		t.Errorf("tx_bytes port9 = %v, %v; want 6000", v, ok)
+	}
+	// port 10's sampler is disabled (no ring row), so there must be no counter series.
+	if _, ok := val(mfs["ms510txup_proc_port_rx_packets"], map[string]string{"port": "10"}); ok {
+		t.Errorf("rx_packets should have no series for port10 (sampler disabled)")
 	}
 
 	// --- optical: xg9 present, DAC has no DDM, part decoded ---
