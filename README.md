@@ -243,6 +243,79 @@ POLL_INTERVAL=15m LISTEN=:9814 CERT_SECRET_NAMESPACE=netgear-certs ./cert-operat
 Metrics (`netgear_cert_*`): `served_matches_target`, `notafter_seconds`,
 `push_success_timestamp`, `push_errors_total`, `last_reconcile_timestamp`.
 
+## rotate-admin — admin-password rotation that cannot lose the new password
+
+`cmd/rotate-admin` rotates a device's admin password and keeps Vault and the
+device from silently diverging — while making it **structurally impossible to
+lose the freshly generated password**. It replaces an ad-hoc script that lost a
+PR60X password to three bugs; each is designed out here:
+
+- the script ran the rotation **twice** (the second run failed against the
+  already-changed password) → the rotation is one straight line, called
+  **exactly once**, with no loop and no retry of the device change;
+- its Vault write was **gated on an exit code a later failing step clobbered**,
+  so the write was skipped → the new password is written to Vault **first and
+  unconditionally**, before the device is touched;
+- a `grep -v` **hid the success line** so the operator misread the result → the
+  outcome is a typed value mapped straight to an exit code, with **no output
+  filtering** anywhere.
+
+### Order of operations
+
+1. **Read** the current secret from Vault (`secret/netgear/<device>`) — the old
+   password (the device's change RPC needs it as input) and every other field.
+2. **Generate** a strong password: guaranteed upper/lower/digit/symbol, and free
+   of `:` and every shell/JSON metacharacter, so it is safe to paste and to hand
+   to the device RPC unescaped.
+3. **Write the new password to Vault FIRST**, before any device call, carrying
+   the other fields through unchanged (merge/preserve). After this line succeeds
+   the new password exists durably — a crash, panic, or kill below cannot lose
+   it. The old value is held in memory for rollback.
+4. **Change** the password on the device (`internal/pr60x.Client.SetAdminPassword`),
+   **once**.
+5. **Verify** with a *fresh* authenticated login using the new password.
+
+### Failure handling and exit codes
+
+The invariant: *Vault and the device never silently diverge, and the new
+password is never lost.* Exit codes reflect the **actual device state**:
+
+| Code | Meaning | Vault | Device |
+| --- | --- | --- | --- |
+| `0` | success, verified | new | new |
+| `1` | precondition failure — nothing changed (bad flags/env, secret missing, **no current password in Vault**, generation or the first Vault write failed) | old | old |
+| `2` | device change failed **cleanly**; Vault **rolled back** to old (the two agree, safe to re-run) | old | old |
+| `3` | change RPC succeeded but **verify failed**; Vault **keeps** new — confirm the device manually | new | likely new |
+| `4` | device change failed **and** the rollback failed — reconcile manually | new | old |
+
+On a clean device failure (2) the device is provably still on the old password,
+so rolling Vault back is safe. On a flaky verify (3) the device is very likely
+already on the new password, so Vault *keeps* new — rolling back there would be
+how you lose access. The password is **never printed** on any path.
+
+### Requirements and usage
+
+It needs the **current** password already in Vault (field `password`), because
+the device's change RPC takes the old password as an argument. That is why it
+**cannot fix the PR60X right now** — that password was lost — but it is correct
+for every future rotation, and `xs508tm` / `wax630e` / `ms510txup` slot in by
+adding a `Device` adapter (see `deviceFactories` in `device_pr60x.go`); the
+`rotate()` core does not change.
+
+```bash
+go build ./cmd/rotate-admin
+export VAULT_ADDR=https://vault.example.com:8200
+export VAULT_TOKEN=...                 # allowed to read + write the secret
+# endpoint from env so no LAN IP is committed:
+NETGEAR_ENDPOINT=https://198.51.100.1 ./rotate-admin -device pr60x
+# flags: -device -endpoint -username -insecure -vault-path -mount -field -kv2 -length
+```
+
+One-shot CLI: it runs once and exits, starts no background work, and leaves no
+lingering process. **Stop the pr60x exporter first** — it polls with the old
+credential and will trip the router's failed-login lockout seconds after the
+change (see `SetAdminPassword`'s doc comment).
+
 ## Exporters
 
 Every exporter polls on its **own schedule** and serves a **cached snapshot**
