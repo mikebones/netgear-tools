@@ -210,6 +210,20 @@ func (r *wax630eSSIDResource) Configure(_ context.Context, req resource.Configur
 	r.client = c.WAX630E
 }
 
+// addSSIDFields are the VAP keys the AP web UI's "Add SSID" submits (its
+// app bundle builds exactly this object), plus the 802.11r/k/v switches. The
+// bandwidth-limit trio is left out: a read-back VAP reports 65536 ("no limit"),
+// which a new VAP rejects with err_code 138 "Invalid bandwidth limit", so the
+// AP's own default is used instead.
+var addSSIDFields = []string{
+	"vapProfileStatus", "ieee80211w", "ssid", "hideNetworkName", "bandSteeringStatus", "oweMode",
+	"authenticationType", "encryption", "vlanID", "clientSeparation", "accessControlGroup",
+	"remoteAccessControlMode", "cpStatus", "cpSessionTimeout", "cpRedirectStatus", "cpURL", "fbCpStatus",
+	"urlTracking", "dhcpOfferBcastToUcast",
+	"allowUIAccess", "allowAccessToCIList", "ciAllowedList", "dvlanStatus", "natMode", "natGw", "natDns",
+	"natSubnetMask", "natLeaseTime", "mpskStatus", "natmduStatus", "11rStatus", "11kvStatus",
+}
+
 // authTypesTakingPSK are the authenticationType codes that carry a preshared
 // key. Taken from the AP's own UI, which gates sending presharedKey on exactly
 // this set; sending one for any other code is at best ignored.
@@ -378,7 +392,8 @@ func (r *wax630eSSIDResource) apply(ctx context.Context, plan *wax630eSSIDModel,
 	creating := false
 	if !ok {
 		// Create, the way the web UI's "Add SSID" does: ask which slot and VAPs
-		// are free (ssidGetFree), then write full VAP objects into them. The
+		// are free (ssidGetFree), then write VAP objects into them with
+		// ssidSetDetails. The
 		// objects are copied from an existing SSID on the same radio so every
 		// firmware-specific field has a sane value; the modelled fields below
 		// overwrite it.
@@ -419,9 +434,18 @@ func (r *wax630eSSIDResource) apply(ctx context.Context, plan *wax630eSSIDModel,
 			if template == nil {
 				continue
 			}
-			copied := make(map[string]any, len(template))
-			for k, v := range template {
-				copied[k] = v
+			// Only the fields the web UI's Add SSID sends. The rest of a read-back
+			// VAP object is informational (accessControlGroupNames carries labels
+			// like "Management (allow)") and the AP rejects a new VAP that echoes
+			// it: "status 1, err_code 99: Invalid characters in configuration".
+			copied := make(map[string]any, len(addSSIDFields))
+			for _, k := range addSSIDFields {
+				if v, ok := template[k]; ok {
+					copied[k] = v
+				}
+			}
+			if _, ok := copied["fbCpStatus"]; !ok {
+				copied["fbCpStatus"] = float64(0)
 			}
 			cur.radios[radio] = map[string]any{vap: copied}
 		}
@@ -489,13 +513,14 @@ func (r *wax630eSSIDResource) apply(ctx context.Context, plan *wax630eSSIDModel,
 		out[radio] = vapOut
 	}
 
-	if creating {
-		if err := r.client.AddSSID(out); err != nil {
+	// A new slot is written with the same ssidSetDetails call as an edit - that
+	// is what the web UI's Add SSID sends, keyed by the slot ssidGetFree named.
+	if err := r.client.SetSSIDDetails(key, out); err != nil {
+		if creating {
 			diags.AddError("Could not add the SSID", err.Error())
-			return
+		} else {
+			diags.AddError("Could not write the SSID", err.Error())
 		}
-	} else if err := r.client.SetSSIDDetails(key, out); err != nil {
-		diags.AddError("Could not write the SSID", err.Error())
 		return
 	}
 

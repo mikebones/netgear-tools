@@ -1066,10 +1066,3 @@ func (c *Client) GetFreeSSID() (key string, vaps map[string]string, err error) {
 	}
 	return "", nil, fmt.Errorf("ssidGetFree returned no slot")
 }
-
-// AddSSID writes a new network into free VAP slots, the same vapSettings write
-// the web UI's "Add SSID" sends. settings is radio -> vap -> full VAP object.
-func (c *Client) AddSSID(settings map[string]any) error {
-	return c.Call(map[string]any{"system": map[string]any{"vapSettings": map[string]any{
-		"vapSettingTable": settings}}}, nil)
-}
