@@ -19,7 +19,7 @@ func TestParseAddressRoundTrip(t *testing.T) {
 
 func TestPayloadMatchesUIShape(t *testing.T) {
 	r := TrafficRule{Name: "x", Allow: true, Enabled: true, Service: "DNS-UDP", Schedule: "Always",
-		SourceInterface: "vlan30", DestinationInterface: "lan",
+		SourceInterface: "vlan30", DestinationInterface: "vlan1",
 		Source: Address{Type: "Subnet", IP: "198.51.100.0", Prefix: 24}, Destination: Address{Type: "Single", IP: "192.0.2.53"}}
 	p := r.payload()
 	want := map[string]any{"action": "Allow", "sourceAddressType": "Subnet", "sourceIpV4Address": "198.51.100.0",
@@ -32,7 +32,7 @@ func TestPayloadMatchesUIShape(t *testing.T) {
 }
 
 func TestNormalizeInterface(t *testing.T) {
-	for in, want := range map[string]string{"VLAN30": "vlan30", "WAN": "wan", "Any": "Any", "VLAN1": "lan", "lan": "lan"} {
+	for in, want := range map[string]string{"VLAN30": "vlan30", "WAN": "wan", "Any": "Any", "VLAN1": "vlan1"} {
 		if got := normalizeInterface(in); got != want {
 			t.Errorf("%s -> %s, want %s", in, got, want)
 		}

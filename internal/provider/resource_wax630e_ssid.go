@@ -375,12 +375,57 @@ func (r *wax630eSSIDResource) apply(ctx context.Context, plan *wax630eSSIDModel,
 		return
 	}
 	cur, ok := readSSID(all, key)
+	creating := false
 	if !ok {
-		diags.AddError("No such SSID slot",
-			fmt.Sprintf("The AP has no SSID slot %q. This resource configures an existing slot; "+
-				"it cannot create one, because the AP has no API for adding an SSID. Create it in "+
-				"the web UI first, then import it.", key))
-		return
+		// Create, the way the web UI's "Add SSID" does: ask which slot and VAPs
+		// are free (ssidGetFree), then write full VAP objects into them. The
+		// objects are copied from an existing SSID on the same radio so every
+		// firmware-specific field has a sane value; the modelled fields below
+		// overwrite it.
+		freeKey, freeVaps, err := r.client.GetFreeSSID()
+		if err != nil {
+			diags.AddError("Could not find a free SSID slot", err.Error())
+			return
+		}
+		if freeKey != key {
+			diags.AddError("Wrong SSID slot for a new network",
+				fmt.Sprintf("The AP would put a new SSID in %q, not %q. Slots are positional; use key = %q.",
+					freeKey, key, freeKey))
+			return
+		}
+		if v := plan.PresharedKey; authTypesTakingPSK[plan.AuthenticationType.ValueInt64()] &&
+			(v.IsNull() || v.IsUnknown() || v.ValueString() == "") {
+			diags.AddError("A new SSID needs a preshared key",
+				"This authentication type takes a passphrase and the slot is new, so there is nothing to keep.")
+			return
+		}
+		cur = ssidEntry{radios: map[string]map[string]any{}}
+		for radio, vap := range freeVaps {
+			var template map[string]any
+			for _, other := range all {
+				obj, _ := other.(map[string]any)
+				if rv, ok := obj[radio].(map[string]any); ok {
+					for _, sv := range rv {
+						if m, ok := sv.(map[string]any); ok {
+							template = m
+							break
+						}
+					}
+				}
+				if template != nil {
+					break
+				}
+			}
+			if template == nil {
+				continue
+			}
+			copied := make(map[string]any, len(template))
+			for k, v := range template {
+				copied[k] = v
+			}
+			cur.radios[radio] = map[string]any{vap: copied}
+		}
+		creating = true
 	}
 
 	var wantRadios []string
@@ -444,7 +489,12 @@ func (r *wax630eSSIDResource) apply(ctx context.Context, plan *wax630eSSIDModel,
 		out[radio] = vapOut
 	}
 
-	if err := r.client.SetSSIDDetails(key, out); err != nil {
+	if creating {
+		if err := r.client.AddSSID(out); err != nil {
+			diags.AddError("Could not add the SSID", err.Error())
+			return
+		}
+	} else if err := r.client.SetSSIDDetails(key, out); err != nil {
 		diags.AddError("Could not write the SSID", err.Error())
 		return
 	}

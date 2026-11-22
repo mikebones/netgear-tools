@@ -1029,3 +1029,47 @@ func (c *Client) Backup(password string) (filename string, data []byte, err erro
 	}
 	return filename, data, nil
 }
+
+// GetFreeSSID asks the AP which SSID slot it would use for a new network and
+// which VAP that slot occupies on each radio, exactly as the web UI's "Add
+// SSID" does: ssidGetFree -> {"SSID3": {"wlan0": "vap2", ...}, "available": "yes"}.
+func (c *Client) GetFreeSSID() (key string, vaps map[string]string, err error) {
+	var out struct {
+		System struct {
+			WlanSettings struct {
+				WlanSettingTable struct {
+					SSIDGetFree map[string]any `json:"ssidGetFree"`
+				} `json:"wlanSettingTable"`
+			} `json:"wlanSettings"`
+		} `json:"system"`
+	}
+	if err := c.Call(map[string]any{"system": map[string]any{"wlanSettings": map[string]any{
+		"wlanSettingTable": map[string]any{"ssidGetFree": ""}}}}, &out); err != nil {
+		return "", nil, err
+	}
+	free := out.System.WlanSettings.WlanSettingTable.SSIDGetFree
+	if avail, _ := free["available"].(string); avail != "yes" {
+		return "", nil, fmt.Errorf("the AP has no free SSID slot")
+	}
+	for k, v := range free {
+		m, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		vaps = map[string]string{}
+		for radio, vap := range m {
+			if s, ok := vap.(string); ok {
+				vaps[radio] = s
+			}
+		}
+		return k, vaps, nil
+	}
+	return "", nil, fmt.Errorf("ssidGetFree returned no slot")
+}
+
+// AddSSID writes a new network into free VAP slots, the same vapSettings write
+// the web UI's "Add SSID" sends. settings is radio -> vap -> full VAP object.
+func (c *Client) AddSSID(settings map[string]any) error {
+	return c.Call(map[string]any{"system": map[string]any{"vapSettings": map[string]any{
+		"vapSettingTable": settings}}}, nil)
+}

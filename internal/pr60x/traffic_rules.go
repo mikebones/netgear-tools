@@ -18,9 +18,9 @@ import (
 //                                  an int, and each rule gains an "id"
 //   deleteTrafficRules([id, ...])  plain array of ids (what the UI sends)
 //
-// Interfaces are the router's interface ids: "lan" (VLAN 1), "vlan<N>", "wan",
-// or "Any". A rule between two VLANs is refused ("Traffic Rule vlan30 and lan
-// is not valid", rpc 1907) unless inter-VLAN routing is on for them.
+// Interfaces are "vlan<N>" (VLAN 1 is "vlan1" - NOT "lan", which getNetworkInterfaces
+// reports but traffic rules reject with rpc 1907 "... is not valid"), "wan", or
+// "Any". A rule between two VLANs also needs inter-VLAN routing on for both.
 //
 // Order is priority: rules are evaluated top-down, so the list is replaced as
 // a whole (delete all, add in order).
@@ -154,11 +154,7 @@ func normalizeInterface(s string) string {
 	if strings.EqualFold(s, "any") {
 		return "Any"
 	}
-	l := strings.ToLower(s)
-	if l == "vlan1" {
-		return "lan"
-	}
-	return l
+	return strings.ToLower(s)
 }
 
 // ListTrafficRules returns the rules in priority order.
