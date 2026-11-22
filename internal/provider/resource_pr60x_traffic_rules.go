@@ -51,8 +51,8 @@ func (r *pr60xTrafficRulesResource) Schema(_ context.Context, _ resource.SchemaR
 			"AUTHORITATIVE: rules not listed here are deleted. Order is priority - the first matching rule " +
 			"wins - so put the narrow allows before the broad deny. Any change replaces the whole list (delete " +
 			"all, add in order), leaving a sub-second window with no rules.\n\n" +
-			"Interfaces are the router's ids: `lan` (VLAN 1), `vlan<N>`, `wan`, or `Any`. A rule between two " +
-			"VLANs is rejected unless `inter_vlan_routing` is on for both (`netgear_pr60x_vlan`).\n\n" +
+			"Interfaces are `vlan<N>` (VLAN 1 is `vlan1`; `lan` is rejected), `wan`, or `Any`. A rule between " +
+			"two VLANs is rejected unless `inter_vlan_routing` is on for both (`netgear_pr60x_vlan`).\n\n" +
 			"Addresses: `any`, a single IP, a CIDR subnet, or `start-end`.\n\n" +
 			"Destroying the resource deletes every rule.",
 		Attributes: map[string]schema.Attribute{
