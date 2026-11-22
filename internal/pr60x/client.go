@@ -1008,7 +1008,10 @@ func (c *Client) GetSecureDNSSettings() (*SecureDNSSettings, error) {
 //     params it returns null, which reads like "no reservations" rather than
 //     "you asked wrong" - the single most misleading result here.
 //
-//  2. addStaticLeaseProfiles takes the COMPLETE list, not an addition. The
+//  2. CORRECTED 2026-11-22: addStaticLeaseProfiles APPENDS, and an entry
+//     that already exists fails the whole call (rpc 2405) - see
+//     SetStaticLeases, which now diffs. The original note follows.
+//     addStaticLeaseProfiles takes the COMPLETE list, not an addition. The
 //     name says add; the behaviour is set. Sending a shorter list is how you
 //     remove entries, so a read-modify-write is mandatory and a caller that
 //     sends only its own entry silently deletes everyone else's.
@@ -1048,28 +1051,91 @@ func (c *Client) ListStaticLeases(vlanID int64) ([]StaticLease, error) {
 	return out.List, nil
 }
 
-// SetStaticLeases REPLACES the reservation list for a VLAN. See the notes
-// above: this is the whole list, and every address in it must already hold a
-// DHCP lease or it is dropped without an error.
+// SetStaticLeases makes a VLAN's reservation list exactly leases, by diff:
+// entries no longer wanted (or changed) are deleted, entries not yet there are
+// added, identical entries are left alone. Every added address must already
+// hold a DHCP lease or the router drops it without an error, so the result is
+// read back and compared.
 //
-// IDs are renumbered from zero so the caller does not have to track them.
+// Why a diff and not one call: addStaticLeaseProfiles APPENDS. Re-sending an
+// entry that already exists fails the whole call with rpc 2405 "In static
+// leases given MAC address already exist" (verified 2026-11-22 on VLAN 30:
+// resending the unchanged one-entry list failed; sending only the new entry
+// appended it). The old "send the complete list" behaviour only ever worked on
+// an empty VLAN.
 func (c *Client) SetStaticLeases(vlanID int64, leases []StaticLease) error {
-	for i := range leases {
-		leases[i].ID = int64(i)
+	cur, err := c.ListStaticLeases(vlanID)
+	if err != nil {
+		return fmt.Errorf("read current reservations: %w", err)
 	}
-	if leases == nil {
-		leases = []StaticLease{}
+	key := func(l StaticLease) string {
+		return strings.ToUpper(l.MAC) + "|" + l.IP + "|" + l.Name
 	}
-	return c.Call("addStaticLeaseProfiles",
-		staticLeaseList{VLANID: vlanID, List: leases}, nil)
+	want := map[string]bool{}
+	for _, l := range leases {
+		want[key(l)] = true
+	}
+	have := map[string]bool{}
+	var remove []StaticLease
+	for _, l := range cur {
+		if want[key(l)] {
+			have[key(l)] = true
+		} else {
+			remove = append(remove, l)
+		}
+	}
+	if len(remove) > 0 {
+		if err := c.DeleteStaticLeases(vlanID, remove); err != nil {
+			return fmt.Errorf("delete reservations: %w", err)
+		}
+	}
+	var add []StaticLease
+	next := int64(len(cur) - len(remove))
+	for _, l := range leases {
+		if have[key(l)] {
+			continue
+		}
+		l.ID = next
+		next++
+		add = append(add, l)
+	}
+	if len(add) > 0 {
+		if err := c.Call("addStaticLeaseProfiles",
+			staticLeaseList{VLANID: vlanID, List: add}, nil); err != nil {
+			return fmt.Errorf("add reservations: %w", err)
+		}
+	}
+	got, err := c.ListStaticLeases(vlanID)
+	if err != nil {
+		return fmt.Errorf("read back reservations: %w", err)
+	}
+	gotKeys := map[string]bool{}
+	for _, l := range got {
+		gotKeys[key(l)] = true
+	}
+	for _, l := range leases {
+		if !gotKeys[key(l)] {
+			return fmt.Errorf("reservation %s %s %s did not stick (the address must hold a DHCP lease first)",
+				l.Name, l.IP, l.MAC)
+		}
+	}
+	if len(got) != len(leases) {
+		return fmt.Errorf("VLAN %d has %d reservations after the write, want %d", vlanID, len(got), len(leases))
+	}
+	return nil
 }
 
-// DeleteStaticLeases removes specific reservations. Passing the entries to
-// keep to SetStaticLeases achieves the same thing; this exists because the
-// firmware offers it and it expresses intent better at a call site.
+// DeleteStaticLeases removes specific reservations (entries as
+// ListStaticLeases returns them). The firmware wants their row ids as plain
+// integers, {vlanID, List: [id, ...]} - what the UI's delete button sends
+// (main.<hash>.js); a list of full entries fails with rpc -32603.
 func (c *Client) DeleteStaticLeases(vlanID int64, leases []StaticLease) error {
+	ids := make([]int64, 0, len(leases))
+	for _, l := range leases {
+		ids = append(ids, l.ID)
+	}
 	return c.Call("deleteStaticLeaseProfiles",
-		staticLeaseList{VLANID: vlanID, List: leases}, nil)
+		map[string]any{"vlanID": vlanID, "List": ids}, nil)
 }
 
 // --- Admin password --------------------------------------------------------
