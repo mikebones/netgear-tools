@@ -855,8 +855,19 @@ func (c *Client) logoutLocked() error {
 	if c.tabid == "" {
 		return nil
 	}
-	_, err := c.do("cgi/set.cgi?cmd=home_logout", "", true)
-	c.tabid, c.pub, c.xsrf = "", nil, ""
+	// The logout is a WRITE and needs the same form envelope and xsrf token as
+	// every other set.cgi call - it is what the UI's logout() sends. An empty
+	// POST without the token is answered 200 and silently ignored, so the slot
+	// stays taken until the ~15-minute idle timeout. That is how per-call
+	// release still filled the session table: verified 2026-11-22, six fresh
+	// clients in a row got errLoginFail on the fifth with the old empty body.
+	defer c.dropSession()
+	if c.xsrf == "" {
+		if err := c.refreshXsrf(); err != nil {
+			return fmt.Errorf("logout: fetch xsrf: %w", err)
+		}
+	}
+	_, err := c.do("cgi/set.cgi?cmd=home_logout", "_ds=1&empty=1&xsrf="+c.xsrf+"&_de=1", true)
 	return err
 }
 

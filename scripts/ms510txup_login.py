@@ -229,8 +229,10 @@ class MS510:
         return res
 
     def logout(self):
+        # A write like any other: an empty body without the xsrf token is
+        # answered 200 and ignored, leaving the session slot taken for ~15 min.
         try:
-            self._request("cgi/set.cgi?cmd=home_logout", b"")
+            self.set("home_logout", {})
         except Exception:
             pass
         self.sess = None
