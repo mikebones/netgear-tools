@@ -165,17 +165,23 @@ func (p *NetgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 			resp.Diagnostics.AddError("Could not create MS510TXUP client", err.Error())
 			return
 		}
-		// Terraform kills the provider process rather than shutting it down, and
-		// this switch frees a session only on logout or a ~15-minute idle
-		// timeout - so a reused session outlives the run that opened it and a
-		// few runs inside that window fill the four-slot table and lock the
-		// admin out (errCode 481). Release per call so nothing is left behind;
-		// the client's own mutex still keeps at most one login in flight, so
-		// this is safe under Terraform's default parallelism. The exporter,
-		// which is long-lived and shuts down cleanly, leaves this off and reuses
-		// its one session. registerCleanup stays as a belt-and-suspenders hand
-		// back of any session still open at a clean shutdown.
-		client.SetReleasePerCall(true)
+		// ONE session per provider process, handed back by Cleanup when the
+		// plugin server stops. This switch frees a session only on logout or a
+		// ~15-minute idle timeout and has a tiny session table, so the logout
+		// has to happen - and it does: Terraform stops a provider with a
+		// graceful plugin Shutdown (2 s grace) and main runs Cleanup after
+		// Serve returns. Verified 2026-11-22: six plans back to back over every
+		// MS510 resource, no errLoginFail.
+		//
+		// Per-call release (log in and out around every Get/Set) is NOT used
+		// even though it would survive a hard kill: every logout is a set.cgi
+		// write and the switch saves running-config to flash after each one
+		// (CFGMGR SAVE_SUCCESS, 75 in five minutes of testing). One session
+		// means one login, one logout and one save per run. The client's mutex
+		// still serialises calls under Terraform's default parallelism.
+		//
+		// A killed provider (Ctrl-C twice, crash) leaks its one slot until the
+		// idle timeout; that is the accepted cost.
 		c.MS510TXUP = client
 		registerCleanup(func() { _ = client.Logout() })
 	}

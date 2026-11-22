@@ -97,16 +97,12 @@ type Client struct {
 //     this switch's multi-step login+RSA handshake every poll would be pure
 //     waste, and the single held session is released by Logout on shutdown.
 //
-//   - The Terraform provider is a short-lived process that Terraform KILLS
-//     rather than shutting down, so a session held past the call that opened it
-//     is leaked for good. This switch has only four session slots and frees
-//     them on logout or a ~15-minute idle timeout, never because the client
-//     went away - so a handful of provider runs inside that window fill the
-//     table and every login is then refused (errCode 481), which is exactly the
-//     lockout that motivated this. With releasePerCall the provider leaves no
-//     session behind, so Terraform's parallelism and run frequency stop
-//     mattering to the session limit. The per-device mutex already serialises
-//     the calls, so at most one login is ever in flight regardless.
+//   - The Terraform provider also reuses one session (false) and logs it out
+//     from its Cleanup hook, which does run: Terraform stops providers with a
+//     graceful plugin Shutdown. Per-call release (true) survives a hard kill,
+//     but every logout is a write that makes the switch save running-config to
+//     flash, so a plan over N resources would cost N flash saves. Use true only
+//     for a caller that cannot guarantee it logs out at exit.
 //
 // It is safe to call once, before the client is used.
 func (c *Client) SetReleasePerCall(v bool) {
