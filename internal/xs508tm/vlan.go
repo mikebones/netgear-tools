@@ -11,9 +11,9 @@ import (
 
 // --- VLAN membership over the SSH CLI ----------------------------------------
 //
-// NOT YET VERIFIED ON A LIVE SWITCH: written against standard FASTPATH/NETGEAR
-// CLI syntax, and the parser is tested on representative `show vlan <id>`
-// output only. Verify with a plan + `show vlan` on first use.
+// Verified on firmware 7.8.11.21: `show vlan <id>` prints "VLAN Name: <name>"
+// and lists ports as xg1..xg10 (lags as "lag N"); a missing VLAN prints
+// "VLAN does not exist.". `interface 0/<n>` is accepted for port xg<n>.
 //
 // Like the MS510 resource it never changes a port's PVID: ports are added as
 // tagged members only, so untagged traffic stays where it is.
@@ -31,8 +31,8 @@ type VLAN struct {
 }
 
 var (
-	vlanNameLine = regexp.MustCompile(`(?m)^\s*VLAN Name\.*\s*(\S.*?)\s*$`)
-	vlanPortLine = regexp.MustCompile(`(?m)^\s*0/(\d+)\s+(Include|Exclude|Autodetect)\s+(Include|Exclude|Autodetect)\s+(Tagged|Untagged)\b`)
+	vlanNameLine = regexp.MustCompile(`(?m)^\s*VLAN Name[\s.:]*(\S.*?)\s*$`)
+	vlanPortLine = regexp.MustCompile(`(?m)^\s*(?:0/|xg)(\d+)\s+(Include|Exclude|Autodetect)\s+(Include|Exclude|Autodetect)\s+(Tagged|Untagged)\b`)
 	vlanMissing  = regexp.MustCompile(`(?i)(does not exist|not exist|invalid vlan|ERROR)`)
 )
 

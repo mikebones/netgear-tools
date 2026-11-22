@@ -43,8 +43,7 @@ func (r *xs508VLANResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"Never changes a port's PVID or untagged membership, so it is additive on a live trunk. " +
 			"`tagged_ports` is authoritative for tagged membership of this VLAN: ports removed from the list " +
 			"are excluded again. Changes are saved (`write memory`) and the save is verified.\n\n" +
-			"**Not yet verified on a live switch**: written against standard FASTPATH CLI syntax. Check " +
-			"`show vlan <id>` after the first apply.\n\n" +
+			"Verified against firmware 7.8.11.21.\n\n" +
 			"Destroying the resource deletes the VLAN.",
 		Attributes: map[string]schema.Attribute{
 			"vlan_id": schema.Int64Attribute{

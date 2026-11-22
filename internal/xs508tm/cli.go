@@ -275,6 +275,18 @@ func (c *Client) SetAdminPassword(oldPassword, newPassword string) error {
 	cli.Send(newPassword, 4*time.Second)
 	out := cli.Send(newPassword, 8*time.Second)
 
+	// Changing the FACTORY default password answers differently: "Log in again
+	// using the new password." and the switch saves startup-config itself
+	// ("Config file 'startup-config' created successfully") and ends the
+	// session. That is success, not failure (seen after a config reset,
+	// 2026-11-22).
+	if strings.Contains(out, "Log in again using the new password") {
+		if strings.Contains(out, "created successfully") {
+			return nil
+		}
+		return fmt.Errorf("password changed from the factory default, but the automatic save was not seen: %s",
+			strings.TrimSpace(lastLines(out, 3)))
+	}
 	if !strings.Contains(out, "Password Changed") {
 		return fmt.Errorf("password was not changed: %s", strings.TrimSpace(lastLines(out, 3)))
 	}

@@ -301,3 +301,44 @@ func (t *telnetConn) send(s string) error {
 	_, err := t.conn.Write([]byte(s))
 	return err
 }
+
+// forbiddenRootCmd matches anything that reaches the Broadcom diag console.
+// Attaching to it starves switchdrvr's watchdog and hard-resets the switch.
+var forbiddenRootCmd = []string{"devshell", "consolepipe", "127.0.0.1:2222", "localhost:2222"}
+
+// TelnetRun runs shell commands as root over the telnet-2323 shell and returns
+// each command's exit code and output. It refuses any command that would touch
+// the diag console (see forbiddenRootCmd).
+func TelnetRun(addr, password string, timeout time.Duration, cmds ...string) ([]int, []string, error) {
+	for _, c := range cmds {
+		for _, bad := range forbiddenRootCmd {
+			if strings.Contains(c, bad) {
+				return nil, nil, fmt.Errorf("refusing %q: it touches the diag console, which watchdog-resets the switch", c)
+			}
+		}
+	}
+	if timeout <= 0 {
+		timeout = 45 * time.Second
+	}
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return nil, nil, fmt.Errorf("telnet dial %s: %w", addr, err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	tc := &telnetConn{conn: conn}
+	if err := tc.login(password); err != nil {
+		return nil, nil, err
+	}
+	codes := make([]int, 0, len(cmds))
+	outs := make([]string, 0, len(cmds))
+	for _, c := range cmds {
+		code, out, err := tc.run(c)
+		if err != nil {
+			return codes, outs, fmt.Errorf("%q: %w", c, err)
+		}
+		codes = append(codes, code)
+		outs = append(outs, out)
+	}
+	return codes, outs, nil
+}

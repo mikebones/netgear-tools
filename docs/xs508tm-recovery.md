@@ -195,3 +195,30 @@ env:
     valueFrom:
       secretKeyRef: { name: xs508tm-admin, key: password }
 ```
+
+## Lessons from a config reset to clear an admin lockout (2026-11-22)
+
+* **Prime before you log in.** `POST /api/v1/login` without first `GET /` (which
+  sets the session cookie) answers `errCode 2` with an empty `login` object even
+  for correct credentials. A real lockout is `login.locked == 1`. Check the flag,
+  not the code, before concluding an account is locked - a raw `curl` probe
+  will mislead you.
+* **The factory-password change succeeds with a different message.** Changing
+  the default password over the CLI `password` command replies "Log in again
+  using the new password.", saves startup-config itself and ends the session.
+  `SetAdminPassword` now treats that as success.
+* **A reset brings back the default SNMPv3 `admin` write user.** If its key had
+  been rotated, re-rotate it straight away (`no snmp-server user admin`, then
+  recreate) - otherwise the switch carries a write-capable SNMP user with a
+  known key.
+* **SNMPv3 users are created interactively:** `snmp-server user <name> <group>
+  auth-sha512`, then the passphrase twice at the prompts. Passing the
+  passphrase on the command line is silently ignored.
+* **What a reset does not touch:** the image banks, certificates and other
+  files outside `*.cfg` / `startup-config`. Everything the REST API sets is
+  saved to startup-config automatically; CLI changes still need `write memory`.
+* After the reset the switch was a DHCP client again (find it by MAC in the
+  router's lease table), and the management address was moved back to static
+  with a single `ip_network_cfg` POST (mode 1 + ip/subnet/gw). The request
+  itself times out as the address changes; the new address answers within
+  seconds.

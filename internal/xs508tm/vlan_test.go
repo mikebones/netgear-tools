@@ -5,20 +5,22 @@ import (
 	"testing"
 )
 
-// Representative FASTPATH `show vlan <id>` output (NETGEAR smart/managed CLI).
+// Real `show vlan 30` output from an XS508TM, firmware 7.8.11.21 (trimmed).
 const showVLAN30 = `
-VLAN ID........................................ 30
-VLAN Name...................................... iot
-VLAN Type...................................... Static
+VLAN ID: 30
+VLAN Name: iot
+VLAN Type: Static
 
 Interface   Current   Configured   Tagging
 ----------  --------  -----------  --------
-0/1         Exclude   Exclude      Untagged
-0/2         Include   Include      Tagged
-0/3         Exclude   Exclude      Untagged
-0/8         Include   Include      Tagged
-0/9         Exclude   Autodetect   Untagged
-`
+xg1         Exclude   Autodetect   Untagged
+xg2         Exclude   Autodetect   Untagged
+xg8         Exclude   Autodetect   Untagged
+xg9         Include   Include      Tagged
+xg10        Include   Include      Tagged
+lag 1       Exclude   Autodetect   Untagged
+
+(XS508TM)#`
 
 func TestParseShowVLAN(t *testing.T) {
 	v, ok := parseShowVLAN(30, showVLAN30)
@@ -28,7 +30,7 @@ func TestParseShowVLAN(t *testing.T) {
 	if v.Name != "iot" {
 		t.Errorf("name = %q", v.Name)
 	}
-	if !reflect.DeepEqual(v.TaggedPorts, []int{2, 8}) {
+	if !reflect.DeepEqual(v.TaggedPorts, []int{9, 10}) {
 		t.Errorf("tagged = %v", v.TaggedPorts)
 	}
 }
