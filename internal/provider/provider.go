@@ -254,8 +254,11 @@ func (p *NetgearProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewWAX630ETimeResource,
 		NewPR60XManagementResource,
 		NewPR60XTimeResource,
+		NewPR60XVLANResource,
+		NewPR60XTrafficRulesResource,
 		NewMS510WebAccessResource,
 		NewXS508WebAccessResource,
+		NewXS508VLANResource,
 	}
 }
 

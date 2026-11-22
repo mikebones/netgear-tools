@@ -68,10 +68,25 @@ off and measured unnecessary here (a 3:1 oversubscription test that produced
 33,000 TCP retransmits recorded **zero** receive overruns, so there is nothing
 for PAUSE to signal). A resource would be a drift detector, not a fix.
 
+**PR60X — VLANs and traffic rules (added 2026-11-22).** `netgear_pr60x_vlan`
+(`addVlanProfiles` / `editVlanProfiles` / `deleteVlanProfiles`; ports are part
+of the profile, non-members read back as `excluded`) and
+`netgear_pr60x_traffic_rules` (`addTrafficRules`, `getTrafficRules`,
+`deleteTrafficRules([ids])`; interfaces written lower-case `lan`/`vlanN`/`wan`,
+read back upper-case). Both verified create / no-op re-plan / destroy against
+firmware 3.0.0.105. A rule between two VLANs is rejected (rpc 1907) unless
+inter-VLAN routing is on for both.
+
 **PR60X — the larger uncovered setters.** `setDualWanProfiles`,
-`setLagSettings`, `setTrafficRules`, `setVlanAdvancedSettings`, `setVlanPorts`,
-`setScheduledReboot`, `setDeviceName`, `setTimeSettings`. None are in use;
-each would need its own read/verify cycle against the live router.
+`setLagSettings`, `setVlanAdvancedSettings`, `setScheduledReboot`,
+`setDeviceName`, `setTimeSettings`. None are in use; each would need its own
+read/verify cycle against the live router.
+
+**XS508TM — VLAN membership (added 2026-11-22, NOT yet verified live).**
+`netgear_xs508tm_vlan` drives the SSH CLI path (`vlan database`,
+`vlan participation include`, `vlan tagging`, `write memory`); tagged-only,
+never touches PVIDs. The `show vlan` parser is unit-tested on representative
+output.
 
 **XS508TM — most of 275 routes.** The three resources cover IGMP snooping,
 port MTU and syslog. The rest is the enterprise feature set this network does
