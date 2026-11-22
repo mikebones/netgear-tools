@@ -783,6 +783,59 @@ func (c *Client) SetVLANMembership(id int, states []int) error {
 	return c.Set("vlan_membership", fields)
 }
 
+// PortVLAN is one port's row on Switching > VLAN > Port PVID Configuration
+// (vlan_intf): its PVID and every VLAN it belongs to.
+//
+// Members and Tagged are comma lists of VLAN ids as the switch prints them
+// ("1,30" / "30" / ""). Every member that is not tagged is untagged. AF (accept
+// frames: 0 all, 1 tagged only, 2 untagged only), IF (ingress filtering) and
+// PPri (802.1p priority) are carried through unchanged by SetPortVLAN.
+type PortVLAN struct {
+	PVID    int    `json:"pvid"`
+	Members string `json:"mbrStr"`
+	Tagged  string `json:"tagMbrStr"`
+	AF      int    `json:"af"`
+	IF      int    `json:"if"`
+	PPri    int    `json:"ppri"`
+}
+
+// ListPortVLANs returns every port row, indexed from 0 (index 0 = port 1).
+func (c *Client) ListPortVLANs() ([]PortVLAN, error) {
+	var d struct {
+		Ports []PortVLAN `json:"ports"`
+	}
+	err := c.Get("vlan_intf", &d)
+	return d.Ports, err
+}
+
+// SetPortVLAN rewrites one port's PVID and VLAN membership in a single write,
+// exactly as the UI's edit dialog submits it (field order included). Unlike
+// SetVLANMembership this DOES change what the port's untagged traffic means -
+// pointing it at the wrong port cuts that port off - so callers name the port
+// explicitly and nothing here is applied in bulk.
+//
+// port is 1-based. Tagged must be a subset of Members; an empty Tagged is sent
+// as the UI's "None" (tagMbrNone=1), which is what clears tagged membership.
+func (c *Client) SetPortVLAN(port int, p PortVLAN) error {
+	if port < 1 || port > 10 {
+		return fmt.Errorf("port %d out of range 1-10", port)
+	}
+	none := "0"
+	if p.Tagged == "" {
+		none = "1"
+	}
+	return c.Set("vlan_intf", []Field{
+		{"tagMbrNone", none},
+		{"pvid", fmt.Sprint(p.PVID)},
+		{"mbrStr", p.Members},
+		{"tagMbrStr", p.Tagged},
+		{"af", fmt.Sprint(p.AF)},
+		{"if", fmt.Sprint(p.IF)},
+		{"ppri", fmt.Sprint(p.PPri)},
+		{"selEntry", fmt.Sprint(port - 1)},
+	})
+}
+
 // --- misc -------------------------------------------------------------------
 
 // DNSConfig is the switch's resolver configuration.
