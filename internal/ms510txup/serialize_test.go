@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,8 +74,15 @@ func newMockSwitch(t *testing.T) *mockSwitch {
 			atomic.AddInt32(&m.logins, 1)
 			_, _ = w.Write([]byte(`{"data":{"status":"ok","sess":"` + m.sessB64 + `"}}`))
 		case cmd == "home_logout":
-			atomic.AddInt32(&m.logouts, 1)
+			// The real switch ignores a logout without the form envelope and
+			// xsrf token (answering 200), so only count the ones it would honour.
+			body, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(body), "xsrf=tok-1") && strings.HasPrefix(string(body), "_ds=1&") {
+				atomic.AddInt32(&m.logouts, 1)
+			}
 			_, _ = w.Write([]byte(`{}`))
+		case cmd == "home_home":
+			_, _ = w.Write([]byte(`{"data":{"xsrf":"tok-1"},"xsrf":"tok-1"}`))
 		default: // any get.cgi read
 			_, _ = w.Write([]byte(`{"data":{"sysName":"sw1","sysSN":"SN","sysUpTimeDays":1}}`))
 		}
